@@ -1,0 +1,2221 @@
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const session = require('express-session');
+const rateLimit = require('express-rate-limit');
+const Database = require('./database-simple');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
+// Initialize database
+const db = new Database();
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Session configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'velmora-secret-key-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true in production with HTTPS
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
+
+// Rate limiting
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // limit each IP to 5 requests per windowMs
+    message: 'Too many authentication attempts, please try again later.'
+});
+
+// Serve static files
+app.use(express.static(path.join(__dirname)));
+
+// Authentication routes
+app.post('/api/register', authLimiter, async (req, res) => {
+    try {
+        const { username, email, password, displayName } = req.body;
+
+        // Validation
+        if (!username || !email || !password || !displayName) {
+            return res.status(400).json({ error: 'All fields are required' });
+        }
+
+        if (username.length < 3 || username.length > 20) {
+            return res.status(400).json({ error: 'Username must be between 3 and 20 characters' });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        // Check if user already exists
+        const existingUser = await db.getUserByUsername(username);
+        if (existingUser) {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
+
+        const existingEmail = await db.getUserByEmail(email);
+        if (existingEmail) {
+            return res.status(400).json({ error: 'Email already exists' });
+        }
+
+        // Create user
+        const user = await db.createUser(username, email, password, displayName);
+        req.session.userId = user.id;
+        req.session.username = user.username;
+
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                displayName: user.displayName,
+                email: user.email
+            }
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ error: 'Registration failed' });
+    }
+});
+
+app.post('/api/login', authLimiter, async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
+
+        const user = await db.validateUser(username, password);
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        req.session.userId = user.id;
+        req.session.username = user.username;
+
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                displayName: user.displayName,
+                email: user.email,
+                totalGames: user.totalGames,
+                totalWins: user.totalWins,
+                mafiaWins: user.mafiaWins,
+                civilianWins: user.civilianWins,
+                favoriteRole: user.favoriteRole
+            }
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Login failed' });
+    }
+});
+
+app.post('/api/logout', (req, res) => {
+    if (req.session.userId) {
+        db.setUserOffline(req.session.userId);
+    }
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({ error: 'Logout failed' });
+        }
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/profile', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const user = await db.getUserById(req.session.userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({
+            id: user.id,
+            username: user.username,
+            displayName: user.display_name,
+            email: user.email,
+            totalGames: user.total_games,
+            totalWins: user.total_wins,
+            mafiaWins: user.mafia_wins,
+            civilianWins: user.civilian_wins,
+            favoriteRole: user.favorite_role,
+            createdAt: user.created_at
+        });
+    } catch (error) {
+        console.error('Profile fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+app.get('/api/friends', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const friends = await db.getFriends(req.session.userId);
+        const friendRequests = await db.getFriendRequests(req.session.userId);
+
+        res.json({
+            friends: friends,
+            friendRequests: friendRequests
+        });
+    } catch (error) {
+        console.error('Friends fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch friends' });
+    }
+});
+
+app.post('/api/friends/add', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ error: 'Username is required' });
+        }
+
+        const result = await db.sendFriendRequest(req.session.userId, username);
+        res.json({ success: true, friend: result });
+    } catch (error) {
+        console.error('Add friend error:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.post('/api/friends/accept', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { friendId } = req.body;
+        if (!friendId) {
+            return res.status(400).json({ error: 'Friend ID is required' });
+        }
+
+        await db.acceptFriendRequest(req.session.userId, friendId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Accept friend error:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.post('/api/friends/deny', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { friendId } = req.body;
+        if (!friendId) {
+            return res.status(400).json({ error: 'Friend ID is required' });
+        }
+
+        await db.denyFriendRequest(req.session.userId, friendId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Deny friend error:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.delete('/api/friends/:friendId', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { friendId } = req.params;
+        await db.removeFriend(req.session.userId, parseInt(friendId));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Remove friend error:', error);
+        res.status(500).json({ error: 'Failed to remove friend' });
+    }
+});
+
+app.get('/api/game-history', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const history = await db.getUserGameHistory(req.session.userId, 20);
+        res.json(history);
+    } catch (error) {
+        console.error('Game history error:', error);
+        res.status(500).json({ error: 'Failed to fetch game history' });
+    }
+});
+
+// Lobby management endpoints
+app.get('/api/lobbies/public', (req, res) => {
+    try {
+        const search = req.query.search?.toLowerCase() || '';
+        const lobbies = Array.from(publicLobbies.values())
+            .filter(lobby => {
+                return lobby.lobbyName.toLowerCase().includes(search) ||
+                       lobby.lobbyDescription.toLowerCase().includes(search);
+            })
+            .map(lobby => ({
+                roomCode: lobby.roomCode,
+                lobbyName: lobby.lobbyName,
+                lobbyDescription: lobby.lobbyDescription,
+                hostName: lobby.hostName,
+                hostId: lobby.hostId,
+                playerCount: lobby.playerCount,
+                maxPlayers: lobby.maxPlayers,
+                gameStarted: lobby.gameStarted,
+                createdAt: lobby.createdAt,
+                mafiaCount: lobby.mafiaCount
+            }))
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        
+        res.json(lobbies);
+    } catch (error) {
+        console.error('Public lobbies error:', error);
+        res.status(500).json({ error: 'Failed to fetch lobbies' });
+    }
+});
+
+app.post('/api/lobbies/create', async (req, res) => {
+    try {
+        const { 
+            lobbyName, 
+            lobbyDescription, 
+            isPublic, 
+            maxPlayers, 
+            mafiaCount, 
+            suicideBomberEnabled, 
+            manipulatorEnabled, 
+            autoPoliceRoles 
+        } = req.body;
+
+        // Validation
+        if (!lobbyName || lobbyName.trim().length === 0) {
+            return res.status(400).json({ error: 'Lobby name is required' });
+        }
+
+        if (lobbyName.length > 30) {
+            return res.status(400).json({ error: 'Lobby name must be 30 characters or less' });
+        }
+
+        // Validate game settings
+        if (maxPlayers < MIN_PLAYERS || maxPlayers > MAX_PLAYERS) {
+            return res.status(400).json({ error: `Max players must be between ${MIN_PLAYERS} and ${MAX_PLAYERS}` });
+        }
+
+        const maxAllowedMafia = getMaxMafiaCount(maxPlayers);
+        if (mafiaCount < 1 || mafiaCount > maxAllowedMafia) {
+            return res.status(400).json({ error: `Mafia count must be between 1 and ${maxAllowedMafia} for ${maxPlayers} players` });
+        }
+
+        if (suicideBomberEnabled && mafiaCount < 3) {
+            return res.status(400).json({ error: 'Suicide Bomber requires at least 3 Mafia members' });
+        }
+
+        // Generate room code
+        const roomCode = generateRoomCode();
+        
+        // Create lobby info
+        const lobbyInfo = {
+            lobbyName: lobbyName.trim(),
+            lobbyDescription: lobbyDescription?.trim() || '',
+            isPublic: isPublic !== false,
+            maxPlayers: parseInt(maxPlayers),
+            mafiaCount: parseInt(mafiaCount),
+            suicideBomberEnabled: !!suicideBomberEnabled,
+            manipulatorEnabled: !!manipulatorEnabled,
+            autoPoliceRoles: autoPoliceRoles !== false
+        };
+
+        res.json({
+            success: true,
+            roomCode: roomCode,
+            lobbyInfo: lobbyInfo
+        });
+    } catch (error) {
+        console.error('Create lobby error:', error);
+        res.status(500).json({ error: 'Failed to create lobby' });
+    }
+});
+
+// Room-based game state
+const rooms = new Map();
+const userSessions = new Map(); // Track user sessions for authentication
+
+// Lobby management
+const publicLobbies = new Map(); // Track public lobbies for browsing
+
+// Create a new room with initial state
+function createRoom(roomCode, hostId, lobbyInfo = null) {
+    return {
+        roomCode,
+        hostId,
+        phase: 'lobby', // lobby, day, night, voting, gameOver
+        players: new Map(),
+        deadPlayers: new Set(),
+        votes: new Map(),
+        dayCount: 0,
+        timeRemaining: 0,
+        gameStarted: false,
+        timer: null,
+        nightActionsUsed: new Set(), // Track night actions used this phase
+        protectedPlayers: new Set(), // Track players protected by doctor
+        mafiaKillTarget: null, // Store the target for the mafia kill action
+        // Lobby information
+        lobbyName: lobbyInfo?.lobbyName || 'Untitled Lobby',
+        lobbyDescription: lobbyInfo?.lobbyDescription || '',
+        isPublic: lobbyInfo?.isPublic !== false, // Default to public
+        createdAt: new Date().toISOString(),
+        settings: {
+            maxPlayers: lobbyInfo?.maxPlayers || 10,
+            mafiaCount: lobbyInfo?.mafiaCount || 2,
+            // New role toggles
+            suicideBomberEnabled: lobbyInfo?.suicideBomberEnabled || false,
+            manipulatorEnabled: lobbyInfo?.manipulatorEnabled || false,
+            autoPoliceRoles: lobbyInfo?.autoPoliceRoles !== false
+        },
+        // Win tracking
+        winStats: {
+            mafiaWins: 0,
+            civilianWins: 0,
+            totalGames: 0
+        }
+    };
+}
+
+// Role definitions
+const ROLES = {
+    MAFIA: 'mafia',
+    DETECTIVE: 'detective',
+    CIVILIAN: 'civilian',
+    DOCTOR: 'doctor',
+    POLICE: 'police',
+    CORRUPT_POLICE: 'corrupt_police',
+    // New roles
+    SUICIDE_BOMBER: 'suicide_bomber',
+    MANIPULATOR: 'manipulator',
+    WHITE_POLICE: 'white_police',
+    BLACK_POLICE: 'black_police',
+    GRAY_POLICE: 'gray_police'
+};
+
+const ROLE_DESCRIPTIONS = {
+    [ROLES.MAFIA]: 'Eliminate civilians and blend in during the day. Work with other mafia members to win.',
+    [ROLES.DETECTIVE]: 'Investigate players at night to find the mafia. Help civilians identify threats.',
+    [ROLES.CIVILIAN]: 'Vote out the mafia during day phases. Use discussion and deduction to win.',
+    [ROLES.DOCTOR]: 'Protect one player each night from elimination. You can protect yourself or others. Your protection works even if you are killed.',
+    [ROLES.POLICE]: 'Help investigate and protect innocent players', 
+    [ROLES.CORRUPT_POLICE]: 'You are secretly working with the mafia while appearing as police',
+    // New role descriptions
+    [ROLES.SUICIDE_BOMBER]: '🔥 Mafia role: When discovered and about to be eliminated, choose specific players to kill in your final act of defiance! (Doctor protection applies)',
+    [ROLES.MANIPULATOR]: '🧠 Mafia role: Alter votes, spread false information, and redirect suspicion during discussions.',
+    [ROLES.WHITE_POLICE]: '🚔 Civilian-aligned Police: Investigate one player per round to reveal their alignment.',
+    [ROLES.BLACK_POLICE]: '⚫ Civilian-aligned Police: Eliminate suspects without full proof, but risk killing innocents.',
+    [ROLES.GRAY_POLICE]: '🔘 Neutral Police: Choose to secretly support either Mafia or Civilians during the game.'
+};
+
+// Game configuration
+const MIN_PLAYERS = 4;
+const MAX_PLAYERS = 20;
+const DAY_DURATION = 120; // 2 minutes
+const NIGHT_DURATION = 60; // 1 minute
+const VOTING_DURATION = 60; // 1 minute
+
+// Room code generation
+function generateRoomCode() {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    // Ensure uniqueness
+    if (rooms.has(result)) {
+        return generateRoomCode();
+    }
+    return result;
+}
+
+// Get maximum allowed mafia count for given player count
+function getMaxMafiaCount(playerCount) {
+    if (playerCount >= 15 && playerCount <= 20) return 4;  // 15-20 players: max 4 mafia
+    if (playerCount >= 7 && playerCount <= 14) return 3;   // 7-14 players: max 3 mafia
+    if (playerCount >= 5 && playerCount <= 6) return 2;    // 5-6 players: max 2 mafia
+    if (playerCount >= 4 && playerCount <= 4) return 1;    // 4 players: max 1 mafia
+    return 1; // Default fallback
+}
+
+// Utility functions
+function generateRoles(playerCount, settings) {
+    const roles = [];
+    const { mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles } = settings;
+    
+    let specialMafiaCount = 0;
+    let policeCount = 0;
+    let detectiveCount = 0;
+    let doctorCount = 0;
+    
+    // Add base mafia members
+    let baseMafiaCount = mafiaCount;
+    
+    // Handle special mafia roles
+    if (mafiaCount >= 3 && suicideBomberEnabled) {
+        roles.push(ROLES.SUICIDE_BOMBER);
+        specialMafiaCount++;
+        baseMafiaCount--; // Replace one regular mafia with suicide bomber
+    }
+    
+    if (manipulatorEnabled) {
+        roles.push(ROLES.MANIPULATOR);
+        specialMafiaCount++;
+        baseMafiaCount--; // Replace one regular mafia with manipulator
+    }
+    
+    // Add remaining regular mafia members
+    for (let i = 0; i < baseMafiaCount; i++) {
+        roles.push(ROLES.MAFIA);
+    }
+    
+    // Add police roles for 10+ players
+    if (playerCount >= 10 && autoPoliceRoles) {
+        roles.push(ROLES.WHITE_POLICE);
+        roles.push(ROLES.BLACK_POLICE);
+        roles.push(ROLES.GRAY_POLICE);
+        policeCount = 3;
+    }
+    
+    // Add one detective if enough players (minimum 5 players for detective)
+    if (playerCount >= 5) {
+        roles.push(ROLES.DETECTIVE);
+        detectiveCount = 1;
+    }
+    
+    // Add one doctor if 5 or more players
+    if (playerCount >= 5) {
+        roles.push(ROLES.DOCTOR);
+        doctorCount = 1;
+    }
+    
+    // Fill remaining slots with civilians
+    while (roles.length < playerCount) {
+        roles.push(ROLES.CIVILIAN);
+    }
+    
+    // Shuffle roles randomly for fair distribution
+    for (let i = roles.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [roles[i], roles[j]] = [roles[j], roles[i]];
+    }
+    
+    const totalMafiaCount = mafiaCount; // Original total mafia count
+    const civilianCount = playerCount - totalMafiaCount - detectiveCount - doctorCount - policeCount;
+    
+    console.log(`Generated roles for ${playerCount} players:`);
+    console.log(`- ${totalMafiaCount} Total Mafia (${baseMafiaCount} regular, ${specialMafiaCount} special)`);
+    console.log(`- ${detectiveCount} Detective, ${doctorCount} Doctor`);
+    console.log(`- ${policeCount} Police (White/Black/Gray)`);
+    console.log(`- ${civilianCount} Civilians`);
+    
+    return roles;
+}
+
+function checkAllNightActionsComplete(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'night') return false;
+    
+    const alivePlayers = Array.from(room.players.values())
+        .filter(p => !room.deadPlayers.has(p.id));
+    
+    // Check if mafia has made their kill (if there are mafia alive)
+    const aliveMafia = alivePlayers.filter(p => 
+        p.role === ROLES.MAFIA || p.role === ROLES.SUICIDE_BOMBER || p.role === ROLES.MANIPULATOR
+    );
+    const mafiaKillMade = room.nightActionsUsed.has('mafia_kill');
+    
+    // Check if detective has investigated (if there's a detective alive)
+    const aliveDetectives = alivePlayers.filter(p => p.role === ROLES.DETECTIVE);
+    let detectiveInvestigated = true;
+    
+    for (const detective of aliveDetectives) {
+        const detectiveActionKey = `detective_investigate_${detective.id}`;
+        if (!room.nightActionsUsed.has(detectiveActionKey)) {
+            detectiveInvestigated = false;
+            break;
+        }
+    }
+    
+    // Check if doctor has protected (if there's a doctor alive)
+    const aliveDoctors = alivePlayers.filter(p => p.role === ROLES.DOCTOR);
+    let doctorProtected = true;
+    
+    for (const doctor of aliveDoctors) {
+        const doctorActionKey = `doctor_protect_${doctor.id}`;
+        if (!room.nightActionsUsed.has(doctorActionKey)) {
+            doctorProtected = false;
+            break;
+        }
+    }
+    
+    // All actions complete if:
+    // 1. Mafia has made their kill (or no mafia alive)
+    // 2. All detectives have investigated (or no detectives alive)
+    // 3. All doctors have protected (or no doctors alive)
+    const allActionsComplete = (aliveMafia.length === 0 || mafiaKillMade) && 
+                               (aliveDetectives.length === 0 || detectiveInvestigated) &&
+                               (aliveDoctors.length === 0 || doctorProtected);
+    
+    return allActionsComplete;
+}
+
+function endPhaseEarly(roomCode, reason) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    // Clear the current timer
+    if (room.timer) {
+        clearInterval(room.timer);
+        room.timer = null;
+    }
+    
+    // Set time remaining to 0
+    room.timeRemaining = 0;
+    
+    // Notify players
+    io.to(roomCode).emit('phaseEnded', { reason });
+    
+    // Transition to next phase
+    if (room.phase === 'night') {
+        setTimeout(() => {
+            startDayPhase(roomCode);
+        }, 2000); // Brief delay to show the message
+    }
+    
+    console.log(`Phase ended early in room ${roomCode}: ${reason}`);
+}
+
+function broadcastGameStateToRoom(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    const publicGameState = {
+        phase: room.phase,
+        playerCount: room.players.size,
+        players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, role: p.role, alive: p.alive })),
+        alivePlayers: Array.from(room.players.values())
+            .filter(p => !room.deadPlayers.has(p.id))
+            .map(p => ({ id: p.id, name: p.name, alive: true })),
+        deadPlayers: Array.from(room.deadPlayers).map(playerId => {
+            const player = room.players.get(playerId);
+            return { id: playerId, name: player ? player.name : 'Unknown Player', alive: false };
+        }),
+        dayCount: room.dayCount,
+        timeRemaining: room.timeRemaining,
+        gameStarted: room.gameStarted,
+        roomCode: roomCode,
+        hostId: room.hostId,
+        settings: room.settings,
+        winStats: room.winStats
+    };
+    
+    io.to(roomCode).emit('gameState', publicGameState);
+}
+
+function checkWinCondition(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return null;
+    
+    const alivePlayers = Array.from(room.players.values())
+        .filter(p => !room.deadPlayers.has(p.id));
+    
+    // Count mafia vs innocent players (include all mafia types)
+    const aliveMafia = alivePlayers.filter(p => 
+        p.role === ROLES.MAFIA || p.role === ROLES.SUICIDE_BOMBER || p.role === ROLES.MANIPULATOR
+    );
+    const aliveInnocents = alivePlayers.filter(p => 
+        p.role === ROLES.DETECTIVE || p.role === ROLES.CIVILIAN || p.role === ROLES.DOCTOR ||
+        p.role === ROLES.WHITE_POLICE || p.role === ROLES.BLACK_POLICE
+    );
+    
+    // Gray Police is neutral and doesn't count for either side in win conditions
+    // (They can choose their allegiance during gameplay)
+    
+    console.log(`Win condition check for room ${roomCode}: ${aliveMafia.length} Mafia, ${aliveInnocents.length} Innocents`);
+    
+    // Innocents win if all mafia are eliminated
+    if (aliveMafia.length === 0) {
+        return {
+            winner: 'innocents',
+            reason: 'All Mafia members have been eliminated!',
+            survivors: aliveInnocents.map(p => ({ name: p.name, role: p.role })),
+            totalDays: room.dayCount
+        };
+    }
+    
+    // Mafia wins if they equal or outnumber innocents
+    if (aliveMafia.length >= aliveInnocents.length) {
+        return {
+            winner: 'mafia',
+            reason: `Mafia (${aliveMafia.length}) equal or outnumber innocents (${aliveInnocents.length})!`,
+            survivors: aliveMafia.map(p => ({ name: p.name, role: p.role })),
+            totalDays: room.dayCount
+        };
+    }
+    
+    return null; // Game continues
+}
+
+async function endGameWithTracking(roomCode, winCondition) {
+    const room = rooms.get(roomCode);
+    if (!room || !winCondition) return;
+    
+    try {
+        // Create game session in database
+        const sessionId = await db.createGameSession(roomCode, room.players.size);
+        const gameStartTime = room.gameStartTime || Date.now();
+        const gameDuration = Math.floor((Date.now() - gameStartTime) / 1000); // in seconds
+        
+        // End the game session
+        await db.endGameSession(sessionId, winCondition.winner, winCondition.totalDays, gameDuration);
+        
+        // Update player statistics
+        for (const [playerId, player] of room.players) {
+            const survived = !room.deadPlayers.has(playerId);
+            let won = false;
+            
+            // Determine if player won
+            if (winCondition.winner === 'mafia') {
+                won = (player.role === 'mafia' || player.role === 'suicide_bomber' || player.role === 'manipulator');
+            } else if (winCondition.winner === 'innocents') {
+                won = !(player.role === 'mafia' || player.role === 'suicide_bomber' || player.role === 'manipulator');
+            }
+            
+            // Add to game participants
+            await db.addGameParticipant(sessionId, player.userId, player.name, player.role, survived, won);
+            
+            // Update user stats if authenticated
+            if (player.userId) {
+                await db.updateUserStats(player.userId, player.role, won, winCondition.winner);
+            }
+        }
+        
+        console.log(`Game statistics saved for room ${roomCode}, session ${sessionId}`);
+    } catch (error) {
+        console.error('Error saving game statistics:', error);
+    }
+    
+    // Update win statistics
+    room.winStats.totalGames++;
+    if (winCondition.winner === 'mafia') {
+        room.winStats.mafiaWins++;
+    } else if (winCondition.winner === 'innocents') {
+        room.winStats.civilianWins++;
+    }
+    
+    // Add win stats to the win condition data
+    winCondition.winStats = {
+        mafiaWins: room.winStats.mafiaWins,
+        civilianWins: room.winStats.civilianWins,
+        totalGames: room.winStats.totalGames
+    };
+    
+    room.phase = 'gameOver';
+    io.to(roomCode).emit('gameOver', winCondition);
+    
+    // Broadcast updated game state with new win stats
+    broadcastGameStateToRoom(roomCode);
+    
+    console.log(`Game ended in room ${roomCode}: ${winCondition.winner} wins after ${winCondition.totalDays} days`);
+    console.log(`Room ${roomCode} stats: Mafia ${room.winStats.mafiaWins} - ${room.winStats.civilianWins} Civilians (${room.winStats.totalGames} total games)`);
+}
+
+function startPhaseTimer(roomCode, duration, nextPhase) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    room.timeRemaining = duration;
+    
+    if (room.timer) {
+        clearInterval(room.timer);
+    }
+    
+    room.timer = setInterval(() => {
+        room.timeRemaining--;
+        
+        if (room.timeRemaining <= 0) {
+            clearInterval(room.timer);
+            room.timer = null;
+            
+            if (nextPhase === 'day') {
+                startDayPhase(roomCode);
+            } else if (nextPhase === 'night') {
+                startNightPhase(roomCode);
+            } else if (nextPhase === 'processVotesAndNight') {
+                processVotesAndStartNight(roomCode);
+            }
+        }
+        
+        broadcastGameStateToRoom(roomCode);
+    }, 1000);
+}
+
+function startDayPhase(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    // Process night actions before starting day phase
+    const gameCanContinue = processNightActions(roomCode);
+    if (!gameCanContinue) {
+        return; // Game ended during night action processing
+    }
+    
+    room.phase = 'day';
+    room.dayCount++;
+    room.votes.clear();
+    
+    const alivePlayers = Array.from(room.players.values())
+        .filter(p => !room.deadPlayers.has(p.id));
+    
+    io.to(roomCode).emit('phaseChange', {
+        phase: 'day',
+        message: `Day ${room.dayCount} begins! Discuss and vote - ${alivePlayers.length} players deciding fate.`
+    });
+    
+    // Day phase now includes voting - when timer ends, process votes and go to night
+    startPhaseTimer(roomCode, DAY_DURATION, 'processVotesAndNight');
+    broadcastGameStateToRoom(roomCode);
+    console.log(`Day ${room.dayCount} started in room ${roomCode} - ${DAY_DURATION} seconds for discussion and voting`);
+}
+
+function processNightActions(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return false;
+    
+    // Process mafia kill if one was decided
+    if (room.mafiaKillTarget) {
+        const targetPlayer = room.players.get(room.mafiaKillTarget);
+        if (targetPlayer && !room.deadPlayers.has(room.mafiaKillTarget)) {
+            
+            // Check if target was protected by doctor
+            if (room.protectedPlayers && room.protectedPlayers.has(room.mafiaKillTarget)) {
+                // Target was protected, kill fails
+                
+                // Check if doctor saved themselves
+                let doctorPlayer = null;
+                for (const [playerId, player] of room.players) {
+                    if (player.role === ROLES.DOCTOR && !room.deadPlayers.has(playerId)) {
+                        doctorPlayer = player;
+                        break;
+                    }
+                }
+                
+                if (room.mafiaKillTarget === doctorPlayer?.id) {
+                    // Doctor saved themselves
+                    io.to(roomCode).emit('playerSaved', {
+                        playerId: null,
+                        playerName: null,
+                        message: `No one died tonight. The village is safe... for now.`
+                    });
+                    console.log(`Doctor ${targetPlayer.name} saved themselves in room ${roomCode}`);
+                } else {
+                    // Doctor saved someone else
+                    io.to(roomCode).emit('playerSaved', {
+                        playerId: null,
+                        playerName: null,
+                        message: `No one died tonight. The village is safe... for now.`
+                    });
+                    console.log(`${targetPlayer.name} was attacked by Mafia but protected by Doctor in room ${roomCode}`);
+                }
+            } else {
+                // No protection, kill succeeds
+                room.deadPlayers.add(room.mafiaKillTarget);
+                
+                // Check if the killed player was the doctor
+                let wasDoctor = targetPlayer.role === ROLES.DOCTOR;
+                let doctorProtectedSomeoneElse = false;
+                
+                if (wasDoctor && room.protectedPlayers && room.protectedPlayers.size > 0) {
+                    // Doctor died but protected someone else
+                    doctorProtectedSomeoneElse = true;
+                    const protectedPlayerId = Array.from(room.protectedPlayers)[0];
+                    const protectedPlayer = room.players.get(protectedPlayerId);
+                    
+                    io.to(roomCode).emit('playerEliminated', {
+                        playerId: room.mafiaKillTarget,
+                        playerName: targetPlayer.name,
+                        phase: 'night',
+                        message: `${targetPlayer.name} was eliminated by the Mafia. Someone was protected tonight.`
+                    });
+                } else {
+                    io.to(roomCode).emit('playerEliminated', {
+                        playerId: room.mafiaKillTarget,
+                        playerName: targetPlayer.name,
+                        phase: 'night'
+                    });
+                }
+                
+                console.log(`Mafia eliminated ${targetPlayer.name} (${targetPlayer.role}) in room ${roomCode}`);
+            }
+        }
+        
+        // Clear the mafia kill target after processing
+        room.mafiaKillTarget = null;
+    } else {
+        // No mafia kill target, check if doctor protected someone anyway
+        if (room.protectedPlayers && room.protectedPlayers.size > 0) {
+            io.to(roomCode).emit('playerSaved', {
+                playerId: null,
+                playerName: null,
+                message: `The night was peaceful. No one was attacked.`
+            });
+        }
+    }
+    
+    // Don't check win condition immediately after night actions
+    // Let the day phase proceed and check win condition after voting
+    return true; // Indicate game continues
+}
+
+function startNightPhase(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    room.phase = 'night';
+    room.votes.clear();
+    room.nightActionsUsed.clear(); // Reset night actions for new night
+    room.protectedPlayers = new Set(); // Clear doctor protections from previous night
+    room.mafiaKillTarget = null; // Clear mafia kill target for new night
+    
+    // Determine if this is the first night or a regular night
+    const isFirstNight = room.dayCount === 0;
+    
+    // Only check win condition after the first night (not at game start)
+    if (!isFirstNight) {
+        const winCondition = checkWinCondition(roomCode);
+        if (winCondition) {
+            endGameWithTracking(roomCode, winCondition);
+            return;
+        }
+    }
+    const nightMessage = isFirstNight 
+        ? '🌙 The game begins under cover of darkness. Special roles, make your first moves!'
+        : `🌙 Night ${room.dayCount} falls on Velmora. Special roles, make your moves!`;
+    
+    io.to(roomCode).emit('phaseChange', {
+        phase: 'night',
+        message: nightMessage
+    });
+    
+    startPhaseTimer(roomCode, NIGHT_DURATION, 'day');
+    broadcastGameStateToRoom(roomCode);
+    
+    const nightLabel = isFirstNight ? 'Night 0 (First Night)' : `Night ${room.dayCount}`;
+    console.log(`${nightLabel} started in room ${roomCode} - ${NIGHT_DURATION} seconds for actions`);
+}
+
+// Voting phase has been integrated into the day phase
+// This function is no longer used
+
+function processVotes(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return { eliminated: null, maxVotes: 0, tie: false };
+    
+    const voteCounts = new Map();
+    const voteDetails = new Map(); // Track who voted for whom
+    
+    // Count votes from alive players only
+    for (const [voter, target] of room.votes) {
+        if (!room.deadPlayers.has(voter)) {
+            voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
+            if (!voteDetails.has(target)) {
+                voteDetails.set(target, []);
+            }
+            const voterName = room.players.get(voter).name;
+            voteDetails.get(target).push(voterName);
+        }
+    }
+    
+    let maxVotes = 0;
+    let eliminated = null;
+    let tieCount = 0;
+    
+    // Find player(s) with most votes
+    for (const [target, votes] of voteCounts) {
+        if (votes > maxVotes) {
+            maxVotes = votes;
+            eliminated = target;
+            tieCount = 1;
+        } else if (votes === maxVotes && votes > 0) {
+            tieCount++;
+            eliminated = null; // Clear elimination due to tie
+        }
+    }
+    
+    const result = {
+        eliminated: eliminated,
+        maxVotes: maxVotes,
+        tie: tieCount > 1 && maxVotes > 0,
+        voteCounts: voteCounts,
+        voteDetails: voteDetails
+    };
+    
+    // Handle elimination or tie
+    if (result.tie) {
+        io.to(roomCode).emit('votingResult', {
+            type: 'tie',
+            message: `Voting resulted in a tie! No one was eliminated.`,
+            voteCounts: Array.from(voteCounts.entries()).map(([playerId, votes]) => ({
+                playerName: room.players.get(playerId).name,
+                votes: votes
+            }))
+        });
+        console.log(`Voting tie in room ${roomCode} - no elimination`);
+    } else if (eliminated && maxVotes > 0) {
+        const eliminatedPlayer = room.players.get(eliminated);
+        
+        // Check if eliminated player is a Suicide Bomber
+        if (eliminatedPlayer.role === ROLES.SUICIDE_BOMBER) {
+            // Don't eliminate immediately - give Suicide Bomber a chance to activate ability
+            io.to(eliminated).emit('suicideBomberActivation', {
+                message: `💥 You've been discovered! Choose up to 2 players to eliminate with you!`,
+                availableTargets: Array.from(room.players.entries())
+                    .filter(([id, player]) => id !== eliminated && !room.deadPlayers.has(id))
+                    .map(([id, player]) => ({ id, name: player.name }))
+            });
+            
+            io.to(roomCode).emit('votingResult', {
+                type: 'suicideBomberDiscovered',
+                message: `${eliminatedPlayer.name} was discovered! They have 30 seconds to make their final choice...`,
+                eliminatedPlayer: {
+                    name: eliminatedPlayer.name
+                },
+                voteCounts: Array.from(voteCounts.entries()).map(([playerId, votes]) => ({
+                    playerName: room.players.get(playerId).name,
+                    votes: votes
+                }))
+            });
+            
+            // Set timer for suicide bomber decision (30 seconds)
+            room.suicideBomberTimer = setTimeout(() => {
+                // Time's up - proceed with normal elimination
+                completeSuicideBomberElimination(roomCode, eliminated, [], maxVotes);
+            }, 30000);
+            
+            console.log(`${eliminatedPlayer.name} (Suicide Bomber) discovered in room ${roomCode} - awaiting target selection`);
+        } else {
+            // Normal elimination
+            room.deadPlayers.add(eliminated);
+            
+            io.to(roomCode).emit('playerEliminated', {
+                playerId: eliminated,
+                playerName: eliminatedPlayer.name,
+                phase: 'day',
+                votes: maxVotes
+            });
+            
+            io.to(roomCode).emit('votingResult', {
+                type: 'elimination',
+                message: `${eliminatedPlayer.name} was eliminated with ${maxVotes} vote(s)!`,
+                eliminatedPlayer: {
+                    name: eliminatedPlayer.name
+                },
+                voteCounts: Array.from(voteCounts.entries()).map(([playerId, votes]) => ({
+                    playerName: room.players.get(playerId).name,
+                    votes: votes
+                }))
+            });
+            
+            console.log(`${eliminatedPlayer.name} eliminated in room ${roomCode} with ${maxVotes} votes`);
+        }
+    } else {
+        io.to(roomCode).emit('votingResult', {
+            type: 'noVotes',
+            message: 'No votes were cast. No one was eliminated.',
+            voteCounts: []
+        });
+        console.log(`No votes cast in room ${roomCode}`);
+    }
+    
+    return result;
+}
+
+function completeSuicideBomberElimination(roomCode, suicideBomberId, selectedTargets, originalVotes) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    const suicideBomber = room.players.get(suicideBomberId);
+    
+    // Clear the timer if it exists
+    if (room.suicideBomberTimer) {
+        clearTimeout(room.suicideBomberTimer);
+        room.suicideBomberTimer = null;
+    }
+    
+    // Eliminate the suicide bomber
+    room.deadPlayers.add(suicideBomberId);
+    
+    // Eliminate selected targets (checking for Doctor protection)
+    const eliminatedTargets = [];
+    const protectedTargets = [];
+    
+    for (const targetId of selectedTargets) {
+        if (!room.deadPlayers.has(targetId)) {
+            const targetPlayer = room.players.get(targetId);
+            
+            // Check if target was protected by doctor
+            if (room.protectedPlayers && room.protectedPlayers.has(targetId)) {
+                // Target was protected, they survive the bombing
+                protectedTargets.push(targetPlayer.name);
+                console.log(`${targetPlayer.name} was targeted by Suicide Bomber but protected by Doctor in room ${roomCode}`);
+            } else {
+                // No protection, target is eliminated
+                room.deadPlayers.add(targetId);
+                eliminatedTargets.push(targetPlayer.name);
+            }
+        }
+    }
+    
+    // Send elimination notification
+    io.to(roomCode).emit('playerEliminated', {
+        playerId: suicideBomberId,
+        playerName: suicideBomber.name,
+        phase: 'day',
+        votes: originalVotes,
+        suicideBomberTargets: eliminatedTargets,
+        protectedTargets: protectedTargets
+    });
+    
+    // Send special message about the suicide bombing
+    let message = `💥 ${suicideBomber.name}`;
+    
+    if (eliminatedTargets.length > 0 && protectedTargets.length > 0) {
+        message += ` went out with a bang, taking ${eliminatedTargets.join(' and ')} with them! 🛡️ However, ${protectedTargets.join(' and ')} were protected by the Doctor!`;
+    } else if (eliminatedTargets.length > 0) {
+        message += ` went out with a bang, taking ${eliminatedTargets.join(' and ')} with them!`;
+    } else if (protectedTargets.length > 0) {
+        message += ` tried to take ${protectedTargets.join(' and ')} with them, but the Doctor's protection saved them! 🛡️`;
+    } else {
+        message += ` chose not to take anyone with them...`;
+    }
+    
+    io.to(roomCode).emit('suicideBomberResult', {
+        bomberName: suicideBomber.name,
+        targetsEliminated: eliminatedTargets,
+        targetsProtected: protectedTargets,
+        message: message
+    });
+    
+    let logMessage = `Suicide Bomber ${suicideBomber.name} eliminated in room ${roomCode}`;
+    if (eliminatedTargets.length > 0) {
+        logMessage += `, eliminated ${eliminatedTargets.length} targets: ${eliminatedTargets.join(', ')}`;
+    }
+    if (protectedTargets.length > 0) {
+        logMessage += `, ${protectedTargets.length} targets protected: ${protectedTargets.join(', ')}`;
+    }
+    console.log(logMessage);
+}
+
+function processVotesAndStartNight(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    console.log(`Processing votes for room ${roomCode}...`);
+    
+    // Process votes and get result
+    const voteResult = processVotes(roomCode);
+    
+    // Check win condition after potential elimination
+    const winCondition = checkWinCondition(roomCode);
+    if (winCondition) {
+        endGameWithTracking(roomCode, winCondition);
+        return;
+    }
+
+    // Transition to night phase after a brief delay to show voting results
+    setTimeout(() => {
+        startNightPhase(roomCode);
+    }, 3000); // 3 second delay to show voting results
+}
+
+function resetGameState(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    // Reset game state but keep players and room settings
+    room.phase = 'lobby';
+    room.gameStarted = false;
+    room.dayCount = 0;
+    room.deadPlayers.clear();
+    room.votes.clear();
+    room.nightActionsUsed.clear();
+    room.protectedPlayers = new Set();
+    room.mafiaKillTarget = null; // Clear mafia kill target
+    room.timeRemaining = 0;
+    
+    // Clear timers
+    if (room.timer) {
+        clearInterval(room.timer);
+        room.timer = null;
+    }
+    
+    // Reset player roles
+    for (const [playerId, player] of room.players) {
+        player.role = null;
+        player.alive = true;
+    }
+    
+    console.log(`Game state reset for room ${roomCode}`);
+    broadcastGameStateToRoom(roomCode);
+}
+
+function updatePublicLobby(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || !room.isPublic) return;
+    
+    const hostPlayer = room.players.get(room.hostId);
+    if (!hostPlayer) return;
+    
+    publicLobbies.set(roomCode, {
+        roomCode: roomCode,
+        lobbyName: room.lobbyName,
+        lobbyDescription: room.lobbyDescription,
+        hostName: hostPlayer.name,
+        hostId: room.hostId,
+        playerCount: room.players.size,
+        maxPlayers: room.settings.maxPlayers,
+        gameStarted: room.gameStarted,
+        createdAt: room.createdAt,
+        mafiaCount: room.settings.mafiaCount
+    });
+}
+
+function cleanupRoom(roomCode) {
+    const room = rooms.get(roomCode);
+    if (room && room.timer) {
+        clearInterval(room.timer);
+    }
+    rooms.delete(roomCode);
+    publicLobbies.delete(roomCode); // Also remove from public lobbies
+}
+
+// Share session with socket.io
+io.use((socket, next) => {
+    const sessionStore = socket.request.session;
+    socket.userId = sessionStore?.userId;
+    socket.username = sessionStore?.username;
+    next();
+});
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+    console.log('Player connected:', socket.id, socket.userId ? `(User: ${socket.username})` : '(Guest)');
+    
+    // Store socket with user mapping
+    if (socket.userId) {
+        userSessions.set(socket.userId, socket.id);
+    }
+    
+    socket.on('authenticateSocket', async (sessionData) => {
+        try {
+            if (sessionData && sessionData.userId) {
+                socket.userId = sessionData.userId;
+                socket.username = sessionData.username;
+                userSessions.set(socket.userId, socket.id);
+                
+                // Update user online status
+                await db.updateLastLogin(socket.userId);
+                
+                socket.emit('socketAuthenticated', {
+                    userId: socket.userId,
+                    username: socket.username
+                });
+                
+                console.log(`Socket authenticated for user: ${socket.username}`);
+            }
+        } catch (error) {
+            console.error('Socket authentication error:', error);
+        }
+    });
+    
+    socket.on('createRoom', async (data) => {
+        let playerName, userId = null, lobbyInfo = null;
+        
+        if (typeof data === 'string') {
+            // Guest mode - just player name
+            playerName = data;
+        } else {
+            // Authenticated mode or lobby creation
+            playerName = data.playerName || data.displayName;
+            userId = socket.userId;
+            lobbyInfo = data.lobbyInfo;
+        }
+        
+        if (!playerName || playerName.trim().length === 0) {
+            socket.emit('error', 'Please enter your name');
+            return;
+        }
+        
+        if (playerName.length > 20) {
+            socket.emit('error', 'Name must be 20 characters or less');
+            return;
+        }
+        
+        const roomCode = data.roomCode || generateRoomCode();
+        const room = createRoom(roomCode, socket.id, lobbyInfo);
+        rooms.set(roomCode, room);
+        
+        const player = {
+            id: socket.id,
+            userId: userId, // Store database user ID
+            name: playerName.trim(),
+            role: null,
+            alive: true,
+            isAuthenticated: !!userId
+        };
+        
+        room.players.set(socket.id, player);
+        socket.join(roomCode);
+        
+        // Add to public lobbies if it's public
+        if (room.isPublic) {
+            publicLobbies.set(roomCode, {
+                roomCode: roomCode,
+                lobbyName: room.lobbyName,
+                lobbyDescription: room.lobbyDescription,
+                hostName: player.name,
+                hostId: socket.id,
+                playerCount: room.players.size,
+                maxPlayers: room.settings.maxPlayers,
+                gameStarted: room.gameStarted,
+                createdAt: room.createdAt,
+                mafiaCount: room.settings.mafiaCount
+            });
+        }
+        
+        socket.emit('roomCreated', {
+            roomCode: roomCode,
+            playerId: socket.id,
+            playerName: player.name,
+            isAuthenticated: player.isAuthenticated,
+            lobbyInfo: lobbyInfo
+        });
+        
+        broadcastGameStateToRoom(roomCode);
+        updatePublicLobby(roomCode);
+        console.log(`Room ${roomCode} created by ${playerName}${userId ? ` (ID: ${userId})` : ' (Guest)'} - Lobby: ${room.lobbyName}`);
+    });
+    
+    socket.on('joinRoom', (data) => {
+        let roomCode, playerName, userId = null;
+        
+        if (typeof data === 'object' && data.roomCode) {
+            // New format with authentication support
+            roomCode = data.roomCode;
+            playerName = data.playerName || data.displayName;
+            userId = socket.userId;
+        } else {
+            // Legacy format or guest mode
+            roomCode = data.roomCode || data;
+            playerName = data.playerName;
+        }
+        
+        if (!playerName || playerName.trim().length === 0) {
+            socket.emit('error', 'Please enter your name');
+            return;
+        }
+        
+        if (playerName.length > 20) {
+            socket.emit('error', 'Name must be 20 characters or less');
+            return;
+        }
+        
+        if (!roomCode || roomCode.trim().length === 0) {
+            socket.emit('error', 'Please enter a room code');
+            return;
+        }
+        
+        const room = rooms.get(roomCode.toUpperCase());
+        if (!room) {
+            socket.emit('error', 'Room not found');
+            return;
+        }
+        
+        if (room.players.size >= room.settings.maxPlayers) {
+            socket.emit('error', 'Room is full');
+            return;
+        }
+        
+        if (room.gameStarted) {
+            socket.emit('error', 'Game already in progress');
+            return;
+        }
+        
+        const player = {
+            id: socket.id,
+            userId: userId, // Store database user ID
+            name: playerName.trim(),
+            role: null,
+            alive: true,
+            isAuthenticated: !!userId
+        };
+        
+        room.players.set(socket.id, player);
+        socket.join(roomCode);
+        
+        socket.emit('roomJoined', {
+            roomCode: roomCode,
+            playerId: socket.id,
+            playerName: player.name,
+            isAuthenticated: player.isAuthenticated,
+            lobbyInfo: {
+                lobbyName: room.lobbyName || 'Untitled Lobby',
+                description: room.description || '',
+                isPublic: room.isPublic || false,
+                hostName: room.hostName || 'Unknown'
+            }
+        });
+        
+        socket.to(roomCode).emit('playerJoined', {
+            playerId: socket.id,
+            playerName: player.name,
+            isAuthenticated: player.isAuthenticated
+        });
+        
+        broadcastGameStateToRoom(roomCode);
+        updatePublicLobby(roomCode);
+        console.log(`${playerName} joined room ${roomCode}${userId ? ` (ID: ${userId})` : ' (Guest)'}`);
+    });
+    
+    socket.on('startGame', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room) {
+            socket.emit('error', 'Room not found');
+            return;
+        }
+        
+        if (!room.players.has(socket.id)) {
+            socket.emit('error', 'You are not in this room');
+            return;
+        }
+        
+        if (socket.id !== room.hostId) {
+            socket.emit('error', 'Only the room host can start the game');
+            return;
+        }
+        
+        if (room.players.size < MIN_PLAYERS) {
+            socket.emit('error', `Need at least ${MIN_PLAYERS} players to start`);
+            return;
+        }
+        
+        if (room.gameStarted) {
+            socket.emit('error', 'Game already started');
+            return;
+        }
+        
+        // Validate mafia count against current player count (not max players)
+        const currentPlayerCount = room.players.size;
+        const maxAllowedMafiaForCurrentPlayers = getMaxMafiaCount(currentPlayerCount);
+        if (room.settings.mafiaCount > maxAllowedMafiaForCurrentPlayers) {
+            socket.emit('error', `Cannot start game: ${room.settings.mafiaCount} Mafia is too many for ${currentPlayerCount} players. Maximum allowed: ${maxAllowedMafiaForCurrentPlayers}`);
+            return;
+        }
+        
+        // Assign roles
+        const roles = generateRoles(room.players.size, room.settings);
+        let roleIndex = 0;
+        
+        // Send game start announcement to all players
+        io.to(roomCode).emit('gameStarting', {
+            message: `🎮 Game is starting! ${room.players.size} players, ${room.settings.mafiaCount} mafia members. The night begins... Roles are being assigned.`,
+            playerCount: room.players.size,
+            mafiaCount: room.settings.mafiaCount
+        });
+        
+        // Brief delay before role assignment for dramatic effect
+        setTimeout(() => {
+            const mafiaMembers = [];
+            
+            for (const [playerId, player] of room.players) {
+                player.role = roles[roleIndex++];
+                
+                // Collect mafia members for later team information sharing (include special mafia roles)
+                if (player.role === ROLES.MAFIA || player.role === ROLES.SUICIDE_BOMBER || player.role === ROLES.MANIPULATOR) {
+                    mafiaMembers.push({ id: playerId, name: player.name, role: player.role });
+                }
+                
+                // Send role info to player
+                io.to(playerId).emit('roleAssigned', {
+                    role: player.role,
+                    description: ROLE_DESCRIPTIONS[player.role]
+                });
+            }
+            
+            // Send mafia team information to all mafia members
+            if (mafiaMembers.length > 1) {
+                mafiaMembers.forEach(mafiaPlayer => {
+                    const teammates = mafiaMembers.filter(member => member.id !== mafiaPlayer.id);
+                    io.to(mafiaPlayer.id).emit('mafiaTeamInfo', {
+                        teammates: teammates,
+                        message: `Your mafia teammates: ${teammates.map(t => t.name).join(', ')}`
+                    });
+                });
+            }
+            
+            room.gameStarted = true;
+            room.gameStartTime = Date.now(); // Track when game started for statistics
+            
+            // Start night phase after a brief delay to allow role reading
+            setTimeout(() => {
+                startNightPhase(roomCode);
+            }, 3000);
+            
+            console.log(`Game started in room ${roomCode}`);
+        }, 2000);
+    });
+    
+    socket.on('updateRoomSettings', (data) => {
+        const { roomCode, maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles } = data;
+        const room = rooms.get(roomCode);
+        
+        if (!room) {
+            socket.emit('error', 'Room not found');
+            return;
+        }
+        
+        if (socket.id !== room.hostId) {
+            socket.emit('error', 'Only the host can change room settings');
+            return;
+        }
+        
+        if (room.gameStarted) {
+            socket.emit('error', 'Cannot change settings after game has started');
+            return;
+        }
+        
+        // Validate settings
+        if (maxPlayers < MIN_PLAYERS || maxPlayers > MAX_PLAYERS) {
+            socket.emit('error', `Player limit must be between ${MIN_PLAYERS} and ${MAX_PLAYERS}`);
+            return;
+        }
+        
+        const maxAllowedMafia = getMaxMafiaCount(maxPlayers);
+        if (mafiaCount < 1 || mafiaCount > maxAllowedMafia) {
+            socket.emit('error', `Mafia count must be between 1 and ${maxAllowedMafia} for ${maxPlayers} players`);
+            return;
+        }
+        
+        // Check if current player count exceeds new limit
+        if (room.players.size > maxPlayers) {
+            socket.emit('error', 'Cannot set limit below current player count');
+            return;
+        }
+        
+        // Validate role settings
+        if (suicideBomberEnabled && mafiaCount < 3) {
+            socket.emit('error', 'Suicide Bomber requires at least 3 Mafia members');
+            return;
+        }
+        
+        // Update settings
+        room.settings.maxPlayers = maxPlayers;
+        room.settings.mafiaCount = mafiaCount;
+        room.settings.suicideBomberEnabled = suicideBomberEnabled !== undefined ? suicideBomberEnabled : room.settings.suicideBomberEnabled;
+        room.settings.manipulatorEnabled = manipulatorEnabled !== undefined ? manipulatorEnabled : room.settings.manipulatorEnabled;
+        room.settings.autoPoliceRoles = autoPoliceRoles !== undefined ? autoPoliceRoles : room.settings.autoPoliceRoles;
+        
+        // Broadcast updated settings to all players in room
+        io.to(roomCode).emit('roomSettingsUpdated', {
+            maxPlayers: maxPlayers,
+            mafiaCount: mafiaCount,
+            suicideBomberEnabled: room.settings.suicideBomberEnabled,
+            manipulatorEnabled: room.settings.manipulatorEnabled,
+            autoPoliceRoles: room.settings.autoPoliceRoles
+        });
+        
+        broadcastGameStateToRoom(roomCode);
+        console.log(`Room ${roomCode} settings updated: ${maxPlayers} max players, ${mafiaCount} mafia`);
+    });
+    
+    socket.on('vote', (data) => {
+        const { roomCode, targetPlayerId } = data;
+        const room = rooms.get(roomCode);
+        
+        if (!room || !room.players.has(socket.id)) {
+            return;
+        }
+        
+        if (!room.gameStarted || room.deadPlayers.has(socket.id)) {
+            return;
+        }
+        
+        if (room.phase !== 'day') {
+            socket.emit('error', 'Voting is only allowed during day phase');
+            return;
+        }
+        
+        if (room.deadPlayers.has(targetPlayerId)) {
+            socket.emit('error', 'Cannot vote for dead player');
+            return;
+        }
+        
+        if (targetPlayerId === socket.id) {
+            socket.emit('error', 'Cannot vote for yourself');
+            return;
+        }
+        
+        // Store the vote
+        room.votes.set(socket.id, targetPlayerId);
+        const targetPlayer = room.players.get(targetPlayerId);
+        const voterPlayer = room.players.get(socket.id);
+        
+        socket.emit('voteConfirmed', { 
+            target: targetPlayerId,
+            targetName: targetPlayer.name
+        });
+        
+        // Broadcast detailed vote information to all players (dynamically visible)
+        const voteCounts = new Map();
+        const voteDetails = []; // Array of individual votes with voter and target names
+        
+        for (const [voter, target] of room.votes) {
+            if (!room.deadPlayers.has(voter)) {
+                voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
+                
+                // Add individual vote details for transparency
+                const voterName = room.players.get(voter).name;
+                const targetName = room.players.get(target).name;
+                voteDetails.push({
+                    voterName: voterName,
+                    targetName: targetName,
+                    voterId: voter,
+                    targetId: target
+                });
+            }
+        }
+        
+        io.to(roomCode).emit('voteUpdate', {
+            totalVotes: room.votes.size,
+            alivePlayers: Array.from(room.players.keys()).filter(id => !room.deadPlayers.has(id)).length,
+            voteCounts: Array.from(voteCounts.entries()).map(([playerId, votes]) => ({
+                playerName: room.players.get(playerId).name,
+                votes: votes
+            })),
+            voteDetails: voteDetails, // Include detailed vote information
+            latestVote: {
+                voterName: voterPlayer.name,
+                targetName: targetPlayer.name
+            }
+        });
+        
+        console.log(`${room.players.get(socket.id).name} voted for ${targetPlayer.name} in room ${roomCode}`);
+        
+        // Check if all alive players have voted
+        const alivePlayers = Array.from(room.players.keys()).filter(id => !room.deadPlayers.has(id));
+        const votersWhoVoted = Array.from(room.votes.keys()).filter(id => !room.deadPlayers.has(id));
+        
+        if (votersWhoVoted.length === alivePlayers.length) {
+            // All alive players have voted, process immediately
+            console.log(`All ${alivePlayers.length} alive players voted in room ${roomCode} - processing votes early`);
+            
+            // Clear existing timer
+            if (room.phaseTimer) {
+                clearTimeout(room.phaseTimer);
+                room.phaseTimer = null;
+            }
+            
+            // Notify clients that voting ended early
+            io.to(roomCode).emit('phaseEnded', {
+                reason: 'All players voted',
+                message: 'All players have voted! Processing results...'
+            });
+            
+            // Process votes after a brief delay
+            setTimeout(() => {
+                processVotesAndStartNight(roomCode);
+            }, 2000);
+        }
+    });
+    
+    socket.on('suicideBomberTargets', (data) => {
+        const { roomCode, selectedTargets } = data;
+        const room = rooms.get(roomCode);
+        
+        if (!room) {
+            socket.emit('error', 'Room not found');
+            return;
+        }
+        
+        const player = room.players.get(socket.id);
+        if (!player || player.role !== ROLES.SUICIDE_BOMBER) {
+            socket.emit('error', 'Only Suicide Bombers can use this action');
+            return;
+        }
+        
+        if (room.deadPlayers.has(socket.id)) {
+            socket.emit('error', 'Dead players cannot take actions');
+            return;
+        }
+        
+        // Validate selected targets (max 2, alive players only)
+        const validTargets = selectedTargets.filter(targetId => {
+            return targetId !== socket.id && // Can't target self
+                   !room.deadPlayers.has(targetId) && // Target must be alive
+                   room.players.has(targetId); // Target must exist
+        }).slice(0, 2); // Maximum 2 targets
+        
+        // Get original vote count for this suicide bomber (they were eliminated)
+        let originalVotes = 0;
+        for (const [voter, target] of room.votes) {
+            if (target === socket.id && !room.deadPlayers.has(voter)) {
+                originalVotes++;
+            }
+        }
+        
+        // Complete the suicide bomber elimination with selected targets
+        completeSuicideBomberElimination(roomCode, socket.id, validTargets, originalVotes);
+        
+        console.log(`Suicide Bomber ${player.name} selected targets: ${validTargets.join(', ')} in room ${roomCode}`);
+    });
+    
+    socket.on('nightAction', (data) => {
+        const { roomCode, action, target } = data;
+        const room = rooms.get(roomCode);
+        
+        if (!room || !room.players.has(socket.id)) {
+            return;
+        }
+        
+        if (!room.gameStarted || room.deadPlayers.has(socket.id)) {
+            return;
+        }
+        
+        if (room.phase !== 'night') {
+            return;
+        }
+        
+        const player = room.players.get(socket.id);
+        
+        // Prevent players from targeting themselves
+        if (target === socket.id) {
+            socket.emit('error', 'You cannot target yourself');
+            return;
+        }
+        
+        // Mafia can eliminate players (only one kill per night, any mafia member can do it)
+        if ((player.role === ROLES.MAFIA || player.role === ROLES.SUICIDE_BOMBER || player.role === ROLES.MANIPULATOR) && action === 'kill') {
+            // Check if a mafia kill has already been made this night
+            if (room.nightActionsUsed.has('mafia_kill')) {
+                socket.emit('error', 'The Mafia has already made a kill this night');
+                return;
+            }
+            
+            // Check if target is already dead
+            if (room.deadPlayers.has(target)) {
+                socket.emit('error', 'This player is already dead');
+                return;
+            }
+            
+            // Check if target is also mafia (mafia cannot kill other mafia)
+            const targetPlayer = room.players.get(target);
+            if (targetPlayer.role === ROLES.MAFIA || targetPlayer.role === ROLES.SUICIDE_BOMBER || targetPlayer.role === ROLES.MANIPULATOR) {
+                socket.emit('error', 'You cannot eliminate a fellow mafia member');
+                return;
+            }
+            
+            // Mark that mafia kill has been used this night and store the target
+            room.nightActionsUsed.add('mafia_kill');
+            room.mafiaKillTarget = target; // Store kill decision for later processing
+            
+            // Notify the mafia player that their kill decision was recorded
+            socket.emit('actionConfirmed', {
+                action: 'kill',
+                targetName: targetPlayer.name,
+                message: `You have chosen to eliminate ${targetPlayer.name}. The kill will be processed at dawn.`
+            });
+            
+            // Notify other mafia members about the kill decision
+            Array.from(room.players.entries()).forEach(([playerId, roomPlayer]) => {
+                if ((roomPlayer.role === ROLES.MAFIA || roomPlayer.role === ROLES.SUICIDE_BOMBER || roomPlayer.role === ROLES.MANIPULATOR) && 
+                    playerId !== socket.id && !room.deadPlayers.has(playerId)) {
+                    io.to(playerId).emit('mafiaNotification', {
+                        message: `${player.name} has chosen to eliminate ${targetPlayer.name}`
+                    });
+                }
+            });
+            
+            console.log(`${player.name} (${player.role}) chose to eliminate ${targetPlayer.name} in room ${roomCode}`);
+            
+            // Check if all night actions are complete
+            if (checkAllNightActionsComplete(roomCode)) {
+                endPhaseEarly(roomCode, 'All night actions completed');
+                return;
+            }
+        }
+        
+        // Detective can investigate (only one investigation per night)
+        if (player.role === ROLES.DETECTIVE && action === 'investigate') {
+            // Check if detective has already investigated this night
+            const detectiveActionKey = `detective_investigate_${socket.id}`;
+            if (room.nightActionsUsed.has(detectiveActionKey)) {
+                socket.emit('error', 'You have already investigated someone this night');
+                return;
+            }
+            
+            // Check if target is dead
+            if (room.deadPlayers.has(target)) {
+                socket.emit('error', 'You cannot investigate a dead player');
+                return;
+            }
+            
+            // Mark that this detective has investigated this night
+            room.nightActionsUsed.add(detectiveActionKey);
+            
+            const targetPlayer = room.players.get(target);
+            let investigationResult = 'innocent';
+            
+            // Detective learns if target is mafia or not
+            if (targetPlayer.role === ROLES.MAFIA) {
+                investigationResult = 'suspicious';
+            }
+            
+            socket.emit('investigationResult', {
+                targetName: targetPlayer.name,
+                result: investigationResult
+            });
+            
+            socket.emit('actionConfirmed', {
+                message: `Investigation completed on ${targetPlayer.name}`
+            });
+            
+            console.log(`${player.name} (Detective) investigated ${targetPlayer.name}: ${investigationResult} in room ${roomCode}`);
+            
+            // Check if all night actions are complete
+            if (checkAllNightActionsComplete(roomCode)) {
+                endPhaseEarly(roomCode, 'All night actions completed');
+                return;
+            }
+        }
+        
+        // Doctor can protect players (only one protection per night)
+        if (player.role === ROLES.DOCTOR && action === 'protect') {
+            // Check if doctor has already protected this night
+            const doctorActionKey = `doctor_protect_${socket.id}`;
+            if (room.nightActionsUsed.has(doctorActionKey)) {
+                socket.emit('error', 'You have already protected someone this night');
+                return;
+            }
+            
+            // Check if target is dead
+            if (room.deadPlayers.has(target)) {
+                socket.emit('error', 'You cannot protect a dead player');
+                return;
+            }
+            
+            // Mark that this doctor has protected this night
+            room.nightActionsUsed.add(doctorActionKey);
+            
+            // Store the protection for this night
+            if (!room.protectedPlayers) {
+                room.protectedPlayers = new Set();
+            }
+            room.protectedPlayers.add(target);
+            
+            const targetPlayer = room.players.get(target);
+            
+            socket.emit('actionConfirmed', {
+                message: `You have protected ${targetPlayer.name}`
+            });
+            
+            console.log(`${player.name} (Doctor) protected ${targetPlayer.name} in room ${roomCode}`);
+            
+            // Check if all night actions are complete
+            if (checkAllNightActionsComplete(roomCode)) {
+                endPhaseEarly(roomCode, 'All night actions completed');
+                return;
+            }
+        }
+    });
+    
+    socket.on('resetGame', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room) {
+            socket.emit('error', 'Room not found');
+            return;
+        }
+        
+        // Only host can reset the game
+        if (socket.id !== room.hostId) {
+            socket.emit('error', 'Only the host can reset the game');
+            return;
+        }
+        
+        // Can only reset when game is over
+        if (room.phase !== 'gameOver') {
+            socket.emit('error', 'Game can only be reset when it\'s over');
+            return;
+        }
+        
+        resetGameState(roomCode);
+        io.to(roomCode).emit('gameReset', 'Game has been reset by the host. Ready for a new game!');
+        console.log(`Game reset by host in room ${roomCode}`);
+    });
+
+    socket.on('returnToLobby', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room) {
+            socket.emit('error', 'Room not found');
+            return;
+        }
+        
+        // Only host can return everyone to lobby, or allow if game is over
+        if (socket.id !== room.hostId && room.phase !== 'gameOver') {
+            socket.emit('error', 'Only the host can return everyone to lobby');
+            return;
+        }
+        
+        // Reset game state and return everyone to lobby
+        resetGameState(roomCode);
+        
+        // Send return to lobby event with current room data
+        const updatedRoom = rooms.get(roomCode);
+        io.to(roomCode).emit('returnedToLobby', {
+            message: 'Everyone has been returned to the lobby.',
+            resetBy: updatedRoom.players.get(socket.id)?.name || 'Host',
+            playerCount: updatedRoom.players.size,
+            players: Array.from(updatedRoom.players.values()).map(p => ({ id: p.id, name: p.name, role: p.role, alive: p.alive })),
+            hostId: updatedRoom.hostId,
+            settings: updatedRoom.settings
+        });
+        
+        // Force a fresh game state broadcast after reset
+        setTimeout(() => {
+            broadcastGameStateToRoom(roomCode);
+        }, 100);
+        console.log(`All players returned to lobby in room ${roomCode} by ${room.players.get(socket.id)?.name || 'Host'}`);
+    });
+
+    // Chat message handler
+    socket.on('chatMessage', (data) => {
+        const { roomCode, message, playerName } = data;
+        const room = rooms.get(roomCode);
+        
+        if (!room || !room.players.has(socket.id)) {
+            return;
+        }
+
+        // Validate message
+        if (!message || message.trim().length === 0 || message.length > 200) {
+            return;
+        }
+
+        // Broadcast message to all players in the room
+        io.to(roomCode).emit('chatMessage', {
+            playerName: playerName,
+            message: message.trim()
+        });
+
+        console.log(`Chat in room ${roomCode} - ${playerName}: ${message.trim()}`);
+    });
+
+    // Mafia chat message handler (only for mafia members)
+    socket.on('mafiaChatMessage', (data) => {
+        const { roomCode, message, playerName } = data;
+        const room = rooms.get(roomCode);
+        
+        if (!room || !room.players.has(socket.id)) {
+            return;
+        }
+
+        const player = room.players.get(socket.id);
+        
+        // Only mafia members can send mafia chat
+        if (player.role !== ROLES.MAFIA) {
+            socket.emit('error', 'Only Mafia members can use this chat');
+            return;
+        }
+
+        // Validate message
+        if (!message || message.trim().length === 0 || message.length > 200) {
+            return;
+        }
+
+        // Broadcast only to mafia members in the room
+        for (const [playerId, roomPlayer] of room.players) {
+            if (roomPlayer.role === ROLES.MAFIA) {
+                io.to(playerId).emit('mafiaChatMessage', {
+                    playerName: playerName,
+                    message: message.trim()
+                });
+            }
+        }
+
+        console.log(`Mafia chat in room ${roomCode} - ${playerName}: ${message.trim()}`);
+    });
+
+    // Handle players leaving rooms voluntarily
+    socket.on('leaveRoom', (roomCode) => {
+        const room = rooms.get(roomCode);
+        if (!room || !room.players.has(socket.id)) {
+            socket.emit('error', 'You are not in this room');
+            return;
+        }
+
+        const player = room.players.get(socket.id);
+        console.log(`${player.name} is leaving room ${roomCode}`);
+
+        // Remove player from room
+        room.players.delete(socket.id);
+        room.deadPlayers.delete(socket.id);
+        room.votes.delete(socket.id);
+        
+        // Leave the socket room
+        socket.leave(roomCode);
+
+        // Notify other players in the room
+        socket.to(roomCode).emit('playerLeft', {
+            playerId: socket.id,
+            playerName: player.name
+        });
+
+        // Notify the leaving player that they successfully left
+        socket.emit('roomLeft', {
+            message: `You have left room ${roomCode}`,
+            roomCode: roomCode
+        });
+
+        // Handle host transfer if the host left
+        if (socket.id === room.hostId && room.players.size > 0) {
+            // Transfer host to the next player in the room
+            const newHostId = Array.from(room.players.keys())[0];
+            room.hostId = newHostId;
+            const newHost = room.players.get(newHostId);
+            io.to(roomCode).emit('hostChanged', {
+                newHostId: newHostId,
+                newHostName: newHost.name
+            });
+            console.log(`Host transferred to ${newHost.name} in room ${roomCode}`);
+        }
+
+        // Clean up empty rooms or reset game if not enough players
+        if (room.players.size === 0) {
+            cleanupRoom(roomCode);
+            console.log(`Room ${roomCode} deleted - no players left`);
+        } else if (room.players.size < MIN_PLAYERS && room.gameStarted) {
+            room.phase = 'lobby';
+            room.gameStarted = false;
+            room.dayCount = 0;
+            room.deadPlayers.clear();
+            room.votes.clear();
+
+            if (room.timer) {
+                clearInterval(room.timer);
+                room.timer = null;
+            }
+
+            io.to(roomCode).emit('gameReset', 'Not enough players, returning to lobby');
+        }
+
+        // Update game state for remaining players
+        if (room.players.size > 0) {
+            broadcastGameStateToRoom(roomCode);
+            updatePublicLobby(roomCode);
+        }
+    });
+    
+    // Friend invitation system
+    socket.on('inviteFriend', async (data) => {
+        try {
+            const { friendId, roomCode } = data;
+            
+            if (!socket.userId) {
+                socket.emit('error', 'You must be logged in to invite friends');
+                return;
+            }
+            
+            const room = rooms.get(roomCode);
+            if (!room) {
+                socket.emit('error', 'Room not found');
+                return;
+            }
+            
+            if (!room.players.has(socket.id)) {
+                socket.emit('error', 'You must be in the room to invite friends');
+                return;
+            }
+            
+            if (room.gameStarted) {
+                socket.emit('error', 'Cannot invite friends after game has started');
+                return;
+            }
+            
+            // Check if friend is online
+            const friendSocketId = userSessions.get(friendId);
+            if (!friendSocketId) {
+                socket.emit('error', 'Friend is not online');
+                return;
+            }
+            
+            const friendSocket = io.sockets.sockets.get(friendSocketId);
+            if (!friendSocket) {
+                socket.emit('error', 'Friend is not available');
+                return;
+            }
+            
+            // Get friend and inviter info
+            const friend = await db.getUserById(friendId);
+            const inviter = await db.getUserById(socket.userId);
+            
+            if (!friend || !inviter) {
+                socket.emit('error', 'User information not found');
+                return;
+            }
+            
+            // Send invitation to friend
+            friendSocket.emit('roomInvitation', {
+                roomCode: roomCode,
+                inviterName: inviter.display_name,
+                inviterId: socket.userId,
+                playerCount: room.players.size,
+                maxPlayers: room.settings.maxPlayers
+            });
+            
+            socket.emit('invitationSent', {
+                friendName: friend.display_name,
+                roomCode: roomCode
+            });
+            
+            console.log(`${inviter.display_name} invited ${friend.display_name} to room ${roomCode}`);
+            
+        } catch (error) {
+            console.error('Friend invitation error:', error);
+            socket.emit('error', 'Failed to send invitation');
+        }
+    });
+    
+    socket.on('respondToInvitation', (data) => {
+        const { accept, roomCode, inviterId } = data;
+        
+        if (!socket.userId) {
+            socket.emit('error', 'You must be logged in to respond to invitations');
+            return;
+        }
+        
+        const inviterSocketId = userSessions.get(inviterId);
+        if (inviterSocketId) {
+            const inviterSocket = io.sockets.sockets.get(inviterSocketId);
+            if (inviterSocket) {
+                inviterSocket.emit('invitationResponse', {
+                    accepted: accept,
+                    responderName: socket.username,
+                    roomCode: roomCode
+                });
+            }
+        }
+        
+        if (accept) {
+            // Auto-join the room if accepted
+            socket.emit('autoJoinRoom', { roomCode: roomCode });
+        }
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('Player disconnected:', socket.id);
+        
+        // Clean up user session mapping
+        if (socket.userId) {
+            userSessions.delete(socket.userId);
+            // Set user offline in database
+            db.setUserOffline(socket.userId).catch(err => 
+                console.error('Error setting user offline:', err)
+            );
+        }
+        
+        // Find which room the player was in
+        let playerRoom = null;
+        for (const [roomCode, room] of rooms) {
+            if (room.players.has(socket.id)) {
+                playerRoom = { roomCode, room };
+                break;
+            }
+        }
+        
+        if (playerRoom) {
+            const { roomCode, room } = playerRoom;
+            const player = room.players.get(socket.id);
+            
+            room.players.delete(socket.id);
+            room.deadPlayers.delete(socket.id);
+            room.votes.delete(socket.id);
+            
+            socket.to(roomCode).emit('playerLeft', {
+                playerId: socket.id,
+                playerName: player.name
+            });
+            
+            // Handle host transfer if the host left
+            if (socket.id === room.hostId && room.players.size > 0) {
+                // Transfer host to the next player in the room
+                const newHostId = Array.from(room.players.keys())[0];
+                room.hostId = newHostId;
+                const newHost = room.players.get(newHostId);
+                io.to(roomCode).emit('hostChanged', {
+                    newHostId: newHostId,
+                    newHostName: newHost.name
+                });
+                console.log(`Host transferred to ${newHost.name} in room ${roomCode}`);
+            }
+            
+            // Clean up empty rooms or reset game if not enough players
+            if (room.players.size === 0) {
+                cleanupRoom(roomCode);
+                console.log(`Room ${roomCode} deleted - no players left`);
+            } else if (room.players.size < MIN_PLAYERS && room.gameStarted) {
+                room.phase = 'lobby';
+                room.gameStarted = false;
+                room.dayCount = 0;
+                room.deadPlayers.clear();
+                room.votes.clear();
+                
+                if (room.timer) {
+                    clearInterval(room.timer);
+                    room.timer = null;
+                }
+                
+                io.to(roomCode).emit('gameReset', 'Not enough players, returning to lobby');
+            }
+            
+            if (room.players.size > 0) {
+                broadcastGameStateToRoom(roomCode);
+                updatePublicLobby(roomCode);
+            }
+        }
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`The Fall of Velmora server running on port ${PORT}`);
+}); 

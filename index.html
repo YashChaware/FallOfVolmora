@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Fall of Velmora</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <!-- Header -->
+        <header class="game-header">
+
+
+            <h1 class="game-title">The Fall of Velmora</h1>
+            <div class="game-info">
+                <span class="phase-indicator" id="phaseIndicator">Lobby</span>
+                <span class="timer" id="timer"></span>
+                <span class="day-counter" id="dayCounter"></span>
+                <span class="room-code" id="roomCodeDisplay" style="display: none;"></span>
+            </div>
+            <div class="user-section" id="userSection">
+                <div class="user-info" id="userInfo" style="display: none;">
+                    <span class="username" id="usernameDisplay"></span>
+                    <button class="btn-small" id="profileBtn">Profile</button>
+                    <button class="btn-small" id="friendsBtn">Friends</button>
+                    <button class="btn-small" id="logoutBtn">Logout</button>
+                </div>
+                <div class="auth-buttons" id="authButtons">
+                    <button class="btn-small" id="loginBtn">Login</button>
+                    <button class="btn-small" id="registerBtn">Register</button>
+                </div>
+                <!-- Hamburger Menu moved here -->
+                <div class="hamburger-menu-inline">
+                    <button class="hamburger-btn" id="hamburgerBtn">
+                        <span class="hamburger-line"></span>
+                        <span class="hamburger-line"></span>
+                        <span class="hamburger-line"></span>
+                    </button>
+                    
+                    <div class="hamburger-dropdown" id="hamburgerDropdown">
+                        <div class="dropdown-section" id="userSectionDropdown" style="display: none;">
+                            <div class="user-info-dropdown">
+                                <span class="dropdown-username" id="userDisplayNameDropdown"></span>
+                                <div class="user-status">Logged In</div>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                        </div>
+                        
+                        <div class="dropdown-item" id="profileDropdownBtn">
+                            <span class="dropdown-icon">👤</span>
+                            <span>Profile</span>
+                        </div>
+                        
+                        <div class="dropdown-item" id="friendsDropdownBtn">
+                            <span class="dropdown-icon">👥</span>
+                            <span>Friends</span>
+                        </div>
+                        
+                        <div class="dropdown-item" id="settingsDropdownBtn">
+                            <span class="dropdown-icon">⚙️</span>
+                            <span>Settings</span>
+                        </div>
+                        
+                        <div class="dropdown-item" id="aboutDropdownBtn">
+                            <span class="dropdown-icon">ℹ️</span>
+                            <span>About</span>
+                        </div>
+                        
+                        <div class="dropdown-divider"></div>
+                        
+                        <div class="dropdown-section" id="authSectionDropdown">
+                            <div class="dropdown-item" id="loginDropdownBtn">
+                                <span class="dropdown-icon">🔑</span>
+                                <span>Login</span>
+                            </div>
+                            
+                            <div class="dropdown-item" id="registerDropdownBtn">
+                                <span class="dropdown-icon">📝</span>
+                                <span>Register</span>
+                            </div>
+                        </div>
+                        
+                        <div class="dropdown-section" id="logoutSectionDropdown" style="display: none;">
+                            <div class="dropdown-item logout-item" id="logoutDropdownBtn">
+                                <span class="dropdown-icon">🚪</span>
+                                <span>Logout</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Comic Intro Screen -->
+        <div class="screen" id="comicIntroScreen" style="display: none;">
+            <div class="comic-container">
+                <div class="comic-header">
+                    <h2 class="comic-title">The Fall of Velmora</h2>
+                    <p class="comic-subtitle">A Tale of Deception and Truth</p>
+                </div>
+                
+                <div class="comic-panel-container">
+                    <div class="comic-panel" id="comicPanel">
+                        <div class="panel-image"></div>
+                        <div class="panel-narration">
+                            <p id="panelText"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="comic-controls">
+                    <button id="skipIntroBtn" class="comic-btn secondary">Skip Intro</button>
+                    <div class="panel-indicator">
+                        <span id="panelCounter">1 / 6</span>
+                    </div>
+                    <button id="nextPanelBtn" class="comic-btn primary">Next →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Authentication Modal -->
+        <div class="modal" id="authModal" style="display: none;">
+            <div class="modal-content">
+                <span class="close" id="closeAuthModal">&times;</span>
+                
+                <!-- Login Form -->
+                <div class="auth-form" id="loginForm">
+                    <h2>Login to Your Account</h2>
+                    <form id="loginFormElement">
+                        <div class="form-group">
+                            <input type="text" id="loginUsername" placeholder="Username" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="loginPassword" placeholder="Password" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Login</button>
+                            <button type="button" class="btn-secondary" id="switchToRegister">Create Account</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Register Form -->
+                <div class="auth-form" id="registerForm" style="display: none;">
+                    <h2>Create New Account</h2>
+                    <form id="registerFormElement">
+                        <div class="form-group">
+                            <input type="text" id="registerUsername" placeholder="Username (3-20 characters)" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="email" id="registerEmail" placeholder="Email" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" id="registerDisplayName" placeholder="Display Name" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="registerPassword" placeholder="Password (min 6 characters)" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Create Account</button>
+                            <button type="button" class="btn-secondary" id="registerAsGuest">Register as Guest</button>
+                            <button type="button" class="btn-secondary" id="switchToLogin">Back to Login</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Modal -->
+        <div class="modal" id="profileModal" style="display: none;">
+            <div class="modal-content">
+                <span class="close" id="closeProfileModal">&times;</span>
+                <h2>Your Profile</h2>
+                <div class="profile-content">
+                    <div class="profile-stats">
+                        <div class="stat-group">
+                            <h3>Game Statistics</h3>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Games:</span>
+                                <span class="stat-value" id="profileTotalGames">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Wins:</span>
+                                <span class="stat-value" id="profileTotalWins">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Win Rate:</span>
+                                <span class="stat-value" id="profileWinRate">0%</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Mafia Wins:</span>
+                                <span class="stat-value" id="profileMafiaWins">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Civilian Wins:</span>
+                                <span class="stat-value" id="profileCivilianWins">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="profile-history">
+                        <h3>Recent Games</h3>
+                        <div class="game-history" id="gameHistory">
+                            <!-- Game history will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Friends Modal -->
+        <div class="modal" id="friendsModal" style="display: none;">
+            <div class="modal-content">
+                <span class="close" id="closeFriendsModal">&times;</span>
+                <h2>Friends</h2>
+                <div class="friends-content">
+                    <!-- Add Friend Section -->
+                    <div class="add-friend-section">
+                        <h3>Add Friend</h3>
+                        <div class="form-group">
+                            <input type="text" id="addFriendUsername" placeholder="Enter username">
+                            <button id="addFriendBtn" class="btn-primary">Add Friend</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Friend Requests -->
+                    <div class="friend-requests" id="friendRequestsSection" style="display: none;">
+                        <h3>Friend Requests</h3>
+                        <div class="requests-list" id="friendRequestsList">
+                            <!-- Friend requests will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Friends List -->
+                    <div class="friends-list">
+                        <h3>Your Friends</h3>
+                        <div class="friends-container" id="friendsContainer">
+                            <!-- Friends will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Room Invitation Modal -->
+        <div class="modal" id="invitationModal" style="display: none;">
+            <div class="modal-content">
+                <h2>Room Invitation</h2>
+                <div class="invitation-content">
+                    <p><span id="inviterName"></span> has invited you to join a game room!</p>
+                    <div class="room-invitation-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Room Code:</span>
+                            <span class="detail-value" id="invitationRoomCode"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Players:</span>
+                            <span class="detail-value" id="invitationPlayerCount"></span>
+                        </div>
+                    </div>
+                    <div class="invitation-actions">
+                        <button id="acceptInvitationBtn" class="btn-primary">Accept</button>
+                        <button id="declineInvitationBtn" class="btn-secondary">Decline</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Menu Screen -->
+        <div class="screen" id="mainMenuScreen" style="display: block;">
+            <div class="main-menu-container">
+                <div class="menu-header">
+                    <h1 class="game-logo">The Fall of Velmora</h1>
+                    <p class="game-tagline">Unite to unmask the darkness</p>
+                </div>
+                
+                <div class="menu-options">
+                    <button class="menu-btn primary" id="createLobbyBtn">
+                        <span class="btn-icon">🏗️</span>
+                        <span class="btn-text">Create Lobby</span>
+                    </button>
+                    
+                    <button class="menu-btn primary" id="joinLobbyBtn">
+                        <span class="btn-icon">🚪</span>
+                        <span class="btn-text">Join Lobby</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Lobby Screen -->
+        <div class="screen" id="createLobbyScreen" style="display: none;">
+            <div class="lobby-container">
+                <div class="screen-header">
+                    <button class="back-btn" id="backFromCreateLobby">← Back</button>
+                    <h2>Create New Lobby</h2>
+                </div>
+                
+                <div class="create-lobby-form">
+                    <div class="form-section">
+                        <h3>Lobby Details</h3>
+                        <div class="form-group">
+                            <label for="lobbyName">Lobby Name</label>
+                            <input type="text" id="lobbyName" placeholder="Enter lobby name" maxlength="30" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="lobbyDescription">Description (Optional)</label>
+                            <input type="text" id="lobbyDescription" placeholder="Brief description" maxlength="100">
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>Privacy Settings</h3>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="lobbyType" value="public" checked>
+                                <span class="radio-custom"></span>
+                                <div class="radio-content">
+                                    <strong>🌐 Public Lobby</strong>
+                                    <p>Anyone can see and join this lobby</p>
+                                </div>
+                            </label>
+                            
+                            <label class="radio-option">
+                                <input type="radio" name="lobbyType" value="private">
+                                <span class="radio-custom"></span>
+                                <div class="radio-content">
+                                    <strong>🔒 Private Lobby</strong>
+                                    <p>Only players with the code can join</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>Game Settings</h3>
+                        
+                        <!-- Player Name for Guests -->
+                        <div class="form-group" id="guestNameGroup" style="display: none;">
+                            <label for="guestPlayerName">Your Name</label>
+                            <input type="text" id="guestPlayerName" placeholder="Enter your name" maxlength="20">
+                        </div>
+                        
+                        <div class="settings-grid">
+                            <div class="setting-item">
+                                <label for="maxPlayersCreate">Max Players</label>
+                                <select id="maxPlayersCreate">
+                                    <option value="4">4 Players</option>
+                                    <option value="6">6 Players</option>
+                                    <option value="8">8 Players</option>
+                                    <option value="10" selected>10 Players</option>
+                                    <option value="12">12 Players</option>
+                                    <option value="15">15 Players</option>
+                                    <option value="20">20 Players</option>
+                                </select>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <label for="mafiaCountCreate">Mafia Count</label>
+                                <select id="mafiaCountCreate">
+                                    <option value="1">1 Mafia</option>
+                                    <option value="2" selected>2 Mafia</option>
+                                    <option value="3">3 Mafia</option>
+                                    <option value="4">4 Mafia</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="checkbox-group">
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="suicideBomberCreate">
+                                <span class="checkbox-custom"></span>
+                                Enable Suicide Bomber Role
+                            </label>
+                            
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="manipulatorCreate">
+                                <span class="checkbox-custom"></span>
+                                Enable Manipulator Role
+                            </label>
+                            
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="autoPoliceCreate" checked>
+                                <span class="checkbox-custom"></span>
+                                Auto Police Roles (10+ players)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="cancelCreateLobby">Cancel</button>
+                        <button type="button" class="btn-primary" id="confirmCreateLobby">Create Lobby</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Join Lobby Screen -->
+        <div class="screen" id="joinLobbyScreen" style="display: none;">
+            <div class="lobby-container">
+                <div class="screen-header">
+                    <button class="back-btn" id="backFromJoinLobby">← Back</button>
+                    <h2>Join Lobby</h2>
+                </div>
+                
+                <div class="join-lobby-tabs">
+                    <button class="tab-btn active" id="publicLobbiesTab">🌐 Public Lobbies</button>
+                    <button class="tab-btn" id="privateLobbiesTab">🔒 Private Lobby</button>
+                </div>
+                
+                <!-- Public Lobbies Tab -->
+                <div class="tab-content" id="publicLobbiesContent">
+                    <div class="lobbies-header">
+                        <div class="search-bar">
+                            <input type="text" id="lobbySearch" placeholder="Search lobbies...">
+                            <button id="refreshLobbies" class="btn-icon">🔄</button>
+                        </div>
+                        <div class="lobbies-count">
+                            <span id="lobbyCount">0</span> lobbies available
+                        </div>
+                    </div>
+                    
+                    <div class="lobbies-list" id="publicLobbiesList">
+                        <div class="no-lobbies">
+                            <p>No public lobbies available</p>
+                            <button class="btn-primary" id="createFirstLobby">Create the first lobby!</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Private Lobby Tab -->
+                <div class="tab-content" id="privateLobbiesContent" style="display: none;">
+                    <div class="private-join-form">
+                        <h3>Join Private Lobby</h3>
+                        <div class="form-group">
+                            <label for="privateLobbyCode">Lobby Code</label>
+                            <input type="text" id="privateLobbyCode" placeholder="Enter 6-character code" maxlength="6">
+                        </div>
+                        <button class="btn-primary" id="joinPrivateLobby">Join Lobby</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div class="screen" id="settingsScreen" style="display: none;">
+            <div class="settings-container">
+                <div class="screen-header">
+                    <button class="back-btn" id="backFromSettings">← Back</button>
+                    <h2>Settings</h2>
+                </div>
+                
+                <div class="settings-content">
+                    <div class="settings-section">
+                        <h3>🔊 Audio Settings</h3>
+                        <div class="setting-item">
+                            <label for="masterVolumeSettings">Master Volume</label>
+                            <div class="volume-control">
+                                <input type="range" id="masterVolumeSettings" min="0" max="100" value="100">
+                                <span id="masterVolumeSettingsValue">100%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label for="musicVolumeSettings">Music Volume</label>
+                            <div class="volume-control">
+                                <input type="range" id="musicVolumeSettings" min="0" max="100" value="70">
+                                <span id="musicVolumeSettingsValue">70%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label for="sfxVolumeSettings">Sound Effects</label>
+                            <div class="volume-control">
+                                <input type="range" id="sfxVolumeSettings" min="0" max="100" value="80">
+                                <span id="sfxVolumeSettingsValue">80%</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-section">
+                        <h3>🎮 Game Preferences</h3>
+                        <div class="checkbox-group">
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="showRoleAnimations" checked>
+                                <span class="checkbox-custom"></span>
+                                Show Role Assignment Animations
+                            </label>
+                            
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="enableNotifications" checked>
+                                <span class="checkbox-custom"></span>
+                                Enable Browser Notifications
+                            </label>
+                            
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="skipIntroComic">
+                                <span class="checkbox-custom"></span>
+                                Skip Intro Comic
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-section">
+                        <h3>🎨 Display Settings</h3>
+                        <div class="setting-item">
+                            <label for="uiScale">UI Scale</label>
+                            <select id="uiScale">
+                                <option value="0.8">Small (80%)</option>
+                                <option value="1.0" selected>Normal (100%)</option>
+                                <option value="1.2">Large (120%)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="checkbox-group">
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="reduceMotion">
+                                <span class="checkbox-custom"></span>
+                                Reduce Motion Effects
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lobby Screen (Updated) -->
+        <div class="screen" id="lobbyScreen" style="display: none;">
+            <div class="lobby-container">
+                <div class="screen-header">
+                    <button class="back-btn" id="backFromLobby">← Leave Lobby</button>
+                    <h2 id="currentLobbyName">Loading...</h2>
+                    <button class="settings-btn" id="lobbySettingsBtn" title="Settings">⚙️</button>
+                </div>
+                
+                <!-- Room Selection -->
+                <div class="room-selection" id="roomSelection" style="display: none;">
+                    <div class="room-options">
+                        <button class="room-option-btn active" id="createRoomBtn">Create New Room</button>
+                        <button class="room-option-btn" id="joinRoomBtn">Join Existing Room</button>
+                    </div>
+                    
+                    <!-- Create Room Form -->
+                    <div class="room-form" id="createRoomForm">
+                        <h3>Create a New Room</h3>
+                        <div class="form-group">
+                            <input type="text" id="createPlayerNameInput" placeholder="Enter your name" maxlength="20">
+                        </div>
+                        <button id="createRoomButton">Create Room</button>
+                    </div>
+                    
+                    <!-- Join Room Form -->
+                    <div class="room-form" id="joinRoomForm" style="display: none;">
+                        <h3>Join an Existing Room</h3>
+                        <div class="form-group">
+                            <input type="text" id="joinPlayerNameInput" placeholder="Enter your name" maxlength="20">
+                        </div>
+                        <div class="form-group">
+                            <input type="text" id="roomCodeInput" placeholder="Enter room code (e.g., ABC123)" maxlength="6">
+                        </div>
+                        <button id="joinRoomButton">Join Room</button>
+                    </div>
+                </div>
+                
+                <!-- Room Info (shown after joining/creating) -->
+                <div class="room-info" id="roomInfo" style="display: none;">
+                    <div class="room-details">
+                        <h3>Room: <span id="currentRoomCode"></span></h3>
+                        <p class="room-share">Share this code with friends to join!</p>
+                    </div>
+                    
+                    <!-- Win Statistics -->
+                    <div class="win-stats" id="winStats">
+                        <h4>📊 Room Statistics</h4>
+                        <div class="stats-display">
+                            <div class="stat-item mafia-stat">
+                                <span class="stat-label">💀 Mafia Wins:</span>
+                                <span class="stat-value" id="mafiaWinCount">0</span>
+                            </div>
+                            <div class="stat-item civilian-stat">
+                                <span class="stat-label">🏆 Civilian Wins:</span>
+                                <span class="stat-value" id="civilianWinCount">0</span>
+                            </div>
+                            <div class="stat-item total-stat">
+                                <span class="stat-label">🎮 Total Games:</span>
+                                <span class="stat-value" id="totalGameCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Room Settings (Host Only) -->
+                    <div class="room-settings" id="roomSettingsSection" style="display: none;">
+                        <h4>Room Settings</h4>
+                        <div class="settings-grid">
+                            <div class="setting-item">
+                                <label for="maxPlayersInput">Max Players (4-20):</label>
+                                <input type="number" id="maxPlayersInput" min="4" max="20" value="10">
+                            </div>
+                            <div class="setting-item">
+                                <label for="mafiaCountInput">Mafia Count (1-2):</label>
+                                <input type="number" id="mafiaCountInput" min="1" max="2" value="2">
+                            </div>
+                        </div>
+                        <div class="role-toggles">
+                            <h5>Special Roles</h5>
+                            <div class="toggle-item">
+                                <label for="manipulatorToggle">
+                                    <input type="checkbox" id="manipulatorToggle">
+                                    🧠 Manipulator (Mafia)
+                                    <small>Alter votes and spread false information</small>
+                                </label>
+                            </div>
+                            <div class="toggle-item" id="suicideBomberToggleContainer" style="display: none;">
+                                <label for="suicideBomberToggle">
+                                    <input type="checkbox" id="suicideBomberToggle">
+                                    🔥 Suicide Bomber (Mafia)
+                                    <small>When discovered, choose specific players to kill - Doctor protection applies (requires 3+ Mafia)</small>
+                                </label>
+                            </div>
+                            <div class="toggle-item" id="autoPoliceToggleContainer">
+                                <label for="autoPoliceToggle">
+                                    <input type="checkbox" id="autoPoliceToggle" checked>
+                                    🚔 Auto Police Roles (10+ players)
+                                    <small>Automatically add White/Black/Gray Police for 10+ players</small>
+                                </label>
+                            </div>
+                        </div>
+                        <button id="updateSettingsButton" class="secondary-btn">Update Settings</button>
+                        <div class="mafia-limits-info">
+                            <small><strong>Mafia Limits:</strong> 4 players: max 1 | 5-6 players: max 2 | 7-14 players: max 3 | 15-20 players: max 4</small>
+                        </div>
+                        <div class="role-preview">
+                            <small>Roles: <span id="rolePreview">2 Mafia, 1 Detective, 5 Civilians</span></small>
+                        </div>
+                    </div>
+
+                    <div class="players-section">
+                        <h4>Players in Room (<span id="playerCount">0</span>)</h4>
+                        <div class="player-list" id="lobbyPlayerList"></div>
+                    </div>
+                    
+                    <div class="lobby-controls">
+                        <button id="startGameButton" style="display: none;">Start Game</button>
+                        <button id="leaveRoomButton" class="secondary-btn">Leave Room</button>
+                        <p class="min-players-text">Minimum 4 players required to start</p>
+                        <p class="host-info-text">Only the room host (👑) can start the game</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div class="screen" id="gameScreen" style="display: none;">
+            <!-- Game Status Bar - moved to top -->
+            <div class="game-status-bar">
+                <div class="room-info">
+                    <span class="room-code">Room: <span id="roomCodeDisplay"></span></span>
+                    <button class="copy-code-btn" id="copyCodeBtn" title="Copy room code">
+                        📋
+                    </button>
+                    <button class="close-game-btn" id="closeGameBtn" title="Close Game (Host Only)" style="display: none;">
+                        ❌
+                    </button>
+                </div>
+                <div class="phase-timer-container">
+                    <div class="phase-indicator" id="phaseIndicator">Lobby</div>
+                    <div class="timer" id="timer">--:--</div>
+                    <div class="day-counter" id="dayCounter">Day 0</div>
+                </div>
+                <span class="current-role" id="currentRoleDisplay">Waiting...</span>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="canvas-container">
+                <canvas id="gameCanvas" width="800" height="600"></canvas>
+                <div class="canvas-overlay">
+                    <div class="role-info" id="roleInfo" style="display: none;">
+                        <h3>Your Role: <span id="playerRole"></span></h3>
+                        <p id="roleDescription"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Interface -->
+            <div class="game-layout">
+                <!-- Phase Instructions -->
+                <div class="phase-instructions" id="phaseInstructions" style="display: none;">
+                    <p id="instructionText"></p>
+                </div>
+            </div>
+            
+            <!-- Separate Chat Window -->
+            <div class="chat-window">
+                <div class="chat-window-header">
+                    <span class="chat-window-title">💬 Game Chat</span>
+                </div>
+                
+                <div class="chat-window-content" id="chatWindowContent">
+                    <!-- Public Chat -->
+                    <div class="chat-section">
+                        <div class="chat-header">💬 Public Chat</div>
+                        <div class="chat-messages" id="chatMessages"></div>
+                        <div class="chat-input">
+                            <input type="text" id="chatInput" placeholder="Type a message..." maxlength="200">
+                            <button id="sendChatButton">Send</button>
+                        </div>
+                    </div>
+
+                    <!-- Mafia Chat (only visible to mafia) -->
+                    <div class="chat-section mafia-chat" id="mafiaChatPanel" style="display: none;">
+                        <div class="chat-header mafia-header">🔪 Mafia Chat</div>
+                        <div class="chat-messages" id="mafiaMessages"></div>
+                        <div class="chat-input">
+                            <input type="text" id="mafiaInput" placeholder="Secret mafia message..." maxlength="200">
+                            <button id="sendMafiaChatButton">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div class="screen" id="gameOverScreen" style="display: none;">
+            <div class="game-over-container">
+                <h2 id="gameOverTitle">Game Over</h2>
+                <p id="gameOverMessage"></p>
+                <div class="countdown-display">
+                    <p id="countdownMessage">⏰ Returning to lobby in <span id="countdownTimer">10</span> seconds...</p>
+                </div>
+                <button id="returnToLobbyButton">🏠 Return Everyone to Lobby Now</button>
+            </div>
+        </div>
+
+        <!-- Comic Ending Screen -->
+        <div class="screen" id="comicEndingScreen" style="display: none;">
+            <div class="comic-container">
+                <div class="comic-header">
+                    <h2 class="comic-title" id="endingTitle">The Aftermath</h2>
+                    <p class="comic-subtitle" id="endingSubtitle">Velmora's Fate Decided</p>
+                </div>
+                
+                <div class="comic-panel-container">
+                    <div class="comic-panel" id="endingComicPanel">
+                        <div class="panel-image"></div>
+                        <div class="panel-narration">
+                            <p id="endingPanelText"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="comic-controls">
+                    <button id="skipEndingBtn" class="comic-btn secondary">Skip</button>
+                    <div class="panel-indicator">
+                        <span id="endingPanelCounter">1 / 2</span>
+                    </div>
+                    <button id="nextEndingPanelBtn" class="comic-btn primary">Next →</button>
+                </div>
+                
+                <div class="ending-actions">
+                    <button id="playAgainFromEndingBtn" class="comic-btn primary">🎮 Play Again</button>
+                    <button id="returnToLobbyFromEndingBtn" class="comic-btn secondary">🏠 Return to Lobby</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Suicide Bomber Target Selection Modal -->
+        <div id="suicideBomberModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h3>💥 Suicide Bomber Activation!</h3>
+                <p id="suicideBomberMessage">You've been discovered! Choose up to 2 players to eliminate with you!</p>
+                <div class="target-selection" id="suicideBomberTargets">
+                    <!-- Target buttons will be populated here -->
+                </div>
+                <div class="modal-actions">
+                    <button id="confirmSuicideBomberTargets" class="action-btn">💥 Activate Bomb</button>
+                    <button id="skipSuicideBomberTargets" class="secondary-btn">😌 Go Quietly</button>
+                </div>
+                <div class="timer-display">
+                    <span id="suicideBomberTimer">30 seconds remaining</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- No more modals - actions are integrated into the player table -->
+
+        <!-- Audio Controls -->
+        <div class="audio-controls" id="audioControls">
+            <div class="volume-panel" id="volumePanel" style="display: none;">
+                <div class="volume-control">
+                    <label>Master Volume</label>
+                    <input type="range" id="masterVolume" min="0" max="100" value="70">
+                    <span id="masterVolumeValue">70%</span>
+                </div>
+                <div class="volume-control">
+                    <label>Music Volume</label>
+                    <input type="range" id="musicVolume" min="0" max="100" value="60">
+                    <span id="musicVolumeValue">60%</span>
+                </div>
+                <div class="volume-control">
+                    <label>Sound Effects</label>
+                    <input type="range" id="sfxVolume" min="0" max="100" value="80">
+                    <span id="sfxVolumeValue">80%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="connection-status" id="connectionStatus">
+            <span class="status-indicator" id="statusIndicator">●</span>
+            <span id="statusText">Connecting...</span>
+        </div>
+
+        <!-- Notification Toast -->
+        <div class="toast" id="toast" style="display: none;">
+            <span id="toastMessage"></span>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
+    <script src="audio-manager.js"></script>
+    <script src="auth-manager.js"></script>
+    <script src="hamburger-menu.js"></script>
+    <script src="lobby-manager.js"></script>
+    <script src="main.js"></script>
+</body>
+</html> 

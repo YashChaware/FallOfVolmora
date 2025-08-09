@@ -2304,6 +2304,7 @@ class VelmoraGame {
         this.playerRole = null;
         this.mafiaTeammates = [];
         this.gameOverInfo = null; // Clear game over information
+        this.currentWinner = null; // Clear winner information
         
         // Clear countdown timer
         if (this.countdownInterval) {
@@ -3889,6 +3890,9 @@ class VelmoraGame {
         document.getElementById('gameOverScreen').style.display = 'block';
         this.currentScreen = 'game-over';
         
+        // Store winner information for countdown message
+        this.currentWinner = winner;
+        
         // Update game over content
         const gameOverTitle = document.getElementById('gameOverTitle');
         const gameOverMessage = document.getElementById('gameOverMessage');
@@ -3926,8 +3930,20 @@ class VelmoraGame {
             gameOverMessage.textContent = fullMessage;
             gameOverMessage.style.whiteSpace = 'pre-line';
         } else {
-            gameOverTitle.textContent = 'Game Over';
-            gameOverMessage.textContent = 'The game has ended.';
+            // Fallback when winner or message is not provided
+            if (winner === 'mafia') {
+                gameOverTitle.textContent = '💀 Mafiyas Win';
+                gameOverTitle.style.color = '#dc3545';
+                gameOverMessage.textContent = 'The Mafia has taken control of Velmora!';
+            } else if (winner === 'innocents') {
+                gameOverTitle.textContent = '🏆 Civilians Win';
+                gameOverTitle.style.color = '#28a745';
+                gameOverMessage.textContent = 'The Civilians have saved Velmora!';
+            } else {
+                gameOverTitle.textContent = 'Game Over';
+                gameOverTitle.style.color = '#333';
+                gameOverMessage.textContent = 'The game has ended.';
+            }
         }
         
         // Play game end audio
@@ -3942,16 +3958,29 @@ class VelmoraGame {
     startCountdownTimer() {
         let timeLeft = 10;
         const timerElement = document.getElementById('countdownTimer');
+        const countdownMessageElement = document.getElementById('countdownMessage');
         
         // Clear any existing countdown
         if (this.countdownInterval) {
             clearInterval(this.countdownInterval);
         }
         
+        // Set appropriate countdown message based on winner
+        let countdownText = '⏰ Returning to lobby in ';
+        if (this.currentWinner === 'mafia') {
+            countdownText = '💀 Mafia Win - Returning to lobby in ';
+        } else if (this.currentWinner === 'innocents') {
+            countdownText = '🏆 Civilian Win - Returning to lobby in ';
+        }
+        
         // Update timer display
         const updateTimer = () => {
             if (timerElement) {
                 timerElement.textContent = timeLeft;
+            }
+            
+            if (countdownMessageElement) {
+                countdownMessageElement.innerHTML = `${countdownText}<span id="countdownTimer">${timeLeft}</span> seconds...`;
             }
             
             if (timeLeft <= 0) {

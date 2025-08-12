@@ -524,9 +524,7 @@ class VelmoraGame {
                 window.audioManager.playRoleReveal(data.role);
             }
             
-            this.showRoleInfo(data.role, data.description);
-            
-            // Switch directly to game screen (no comic intro)
+            // Switch directly to game screen (no role popup)
             this.switchToGameScreen();
             
             // Reset play again button if it exists (in case of restart)
@@ -1876,7 +1874,7 @@ class VelmoraGame {
         // Format role name with proper capitalization
         const roleName = role.charAt(0).toUpperCase() + role.slice(1);
         roleSpan.textContent = roleName;
-        descSpan.textContent = description;
+        descSpan.textContent = ''; // Remove description display
         
         // Add role-specific styling
         roleInfo.className = `role-info role-${role}`;
@@ -2023,25 +2021,17 @@ class VelmoraGame {
     handleNightPhaseStart() {
         this.showToast('🌙 Night Phase: Special roles, time to act!', 'info');
         
-        // Show role info for special roles
+        // Additional guidance for first night (without showing role popup)
         if (this.playerRole && this.playerRole !== 'civilian') {
-            setTimeout(() => {
-                const roleInfo = document.getElementById('roleInfo');
-                if (roleInfo) {
-                    roleInfo.style.display = 'block';
-                }
-                
-                // Additional guidance for first night
-                if (this.gameState.dayCount === 0) {
-                    setTimeout(() => {
-                        if (this.playerRole === 'mafia') {
-                            this.showToast('🔪 First Night: Choose a player to eliminate. Then the day begins.', 'info');
-                        } else if (this.playerRole === 'detective') {
-                            this.showToast('🔍 First Night: Investigate a player to learn their role.', 'info');
-                        }
-                    }, 2000);
-                }
-            }, 1500);
+            if (this.gameState.dayCount === 0) {
+                setTimeout(() => {
+                    if (this.playerRole === 'mafia') {
+                        this.showToast('🔪 First Night: Choose a player to eliminate. Then the day begins.', 'info');
+                    } else if (this.playerRole === 'detective') {
+                        this.showToast('🔍 First Night: Investigate a player to learn their role.', 'info');
+                    }
+                }, 2000);
+            }
         } else {
             this.showToast('💤 You are a Civilian - Rest while others act during the night', 'info');
         }
@@ -3705,13 +3695,7 @@ class VelmoraGame {
             this.currentScreen = 'game';
             this.switchToGameScreen();
             
-            // Show role info if it was assigned during comic
-            if (this.playerRole) {
-                const roleInfo = document.getElementById('roleInfo');
-                if (roleInfo && roleInfo.style.display === 'none') {
-                    roleInfo.style.display = 'block';
-                }
-            }
+            // Role info popup removed - players start directly in game
         } else {
             document.getElementById('lobbyScreen').style.display = 'block';
             this.currentScreen = 'lobby';

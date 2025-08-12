@@ -154,13 +154,13 @@ class HamburgerMenu {
     }
 
     handleSettingsClick() {
-        // Check if we're in the lobby manager (main menu) or game screen
-        if (window.lobbyManager && window.lobbyManager.currentScreen === 'mainMenuScreen') {
+        // Settings are now accessible from anywhere
+        if (window.lobbyManager) {
             // Use lobby manager's settings screen
             window.lobbyManager.showSettings();
         } else {
-            // We're in game - use a simplified settings modal or show notification
-            this.showNotification('Settings available from main menu', 'info');
+            // Fallback: show notification if lobby manager is not available
+            this.showNotification('Settings temporarily unavailable', 'warning');
         }
     }
 

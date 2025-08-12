@@ -3499,6 +3499,50 @@ body.voting-phase {
     font-weight: bold;
 }
 
+/* Bot Settings */
+.checkbox-group h4 {
+    margin: 1.5rem 0 0.5rem 0;
+    color: #e0e0e0;
+    font-size: 1.1em;
+    border-bottom: 1px solid #444;
+    padding-bottom: 0.5rem;
+}
+
+.bot-settings {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 0.5rem;
+    border-left: 3px solid #4fc3f7;
+}
+
+.bot-settings .setting-item {
+    margin-bottom: 0.5rem;
+}
+
+.bot-settings label {
+    color: #ccc;
+    font-size: 0.9em;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.bot-settings select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: white;
+    padding: 0.5rem;
+    width: 100%;
+}
+
+.bot-help-text {
+    color: #888;
+    font-size: 0.8em;
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
 /* Join Lobby Tabs */
 .join-lobby-tabs {
     display: flex;

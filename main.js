@@ -775,6 +775,10 @@ class VelmoraGame {
                 message += `, Special: ${specialRoles.join(', ')}`;
             }
             
+            if (data.enableBots) {
+                message += `, Bots: ${data.botCount} max`;
+            }
+            
             this.showToast(message);
         });
 
@@ -1047,7 +1051,7 @@ class VelmoraGame {
         }
     }
 
-    updateRoomSettings(maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles) {
+    updateRoomSettings(maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles, enableBots, botCount) {
         if (this.currentRoomCode) {
             this.socket.emit('updateRoomSettings', {
                 roomCode: this.currentRoomCode,
@@ -1055,7 +1059,9 @@ class VelmoraGame {
                 mafiaCount: parseInt(mafiaCount),
                 suicideBomberEnabled: suicideBomberEnabled,
                 manipulatorEnabled: manipulatorEnabled,
-                autoPoliceRoles: autoPoliceRoles
+                autoPoliceRoles: autoPoliceRoles,
+                enableBots: enableBots,
+                botCount: parseInt(botCount)
             });
         }
     }
@@ -1066,12 +1072,16 @@ class VelmoraGame {
         const suicideBomberToggle = document.getElementById('suicideBomberToggle');
         const manipulatorToggle = document.getElementById('manipulatorToggle');
         const autoPoliceToggle = document.getElementById('autoPoliceToggle');
+        const botToggle = document.getElementById('botToggle');
+        const botCountLobby = document.getElementById('botCountLobby');
         
         const maxPlayers = parseInt(maxPlayersInput.value);
         const mafiaCount = parseInt(mafiaCountInput.value);
         const suicideBomberEnabled = suicideBomberToggle?.checked || false;
         const manipulatorEnabled = manipulatorToggle?.checked || false;
         const autoPoliceRoles = autoPoliceToggle?.checked || true;
+        const enableBots = botToggle?.checked || false;
+        const botCount = botCountLobby ? parseInt(botCountLobby.value) : 1;
         
         if (maxPlayers < 4 || maxPlayers > 20) {
             this.showToast('Max players must be between 4 and 20', 'error');
@@ -1089,7 +1099,7 @@ class VelmoraGame {
             return;
         }
         
-        this.updateRoomSettings(maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles);
+        this.updateRoomSettings(maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles, enableBots, botCount);
     }
 
     updateGameState(state) {
@@ -1177,9 +1187,12 @@ class VelmoraGame {
         // Update player lists
         this.updatePlayerLists();
 
-        // Update start game button visibility (only for host)
+        // Update start game button visibility (only for host with human players)
         const startButton = document.getElementById('startGameButton');
-        if (startButton && this.gameState.playerCount >= 4 && this.isHost()) {
+        const humanPlayerCount = this.gameState.players ? 
+            this.gameState.players.filter(p => !p.isBot).length : 0;
+        
+        if (startButton && this.gameState.playerCount >= 4 && this.isHost() && humanPlayerCount > 0) {
             startButton.style.display = 'block';
         } else if (startButton) {
             startButton.style.display = 'none';
@@ -1192,6 +1205,22 @@ class VelmoraGame {
                 closeButton.style.display = 'inline-block';
             } else {
                 closeButton.style.display = 'none';
+            }
+        }
+
+        // Update minimum players text
+        const minPlayersText = document.getElementById('min-players-text') || 
+                               document.querySelector('.min-players-text');
+        if (minPlayersText) {
+            if (humanPlayerCount === 0 && this.gameState.playerCount > 0) {
+                minPlayersText.textContent = 'At least 1 human player required to start';
+                minPlayersText.style.color = '#ff6b6b';
+            } else if (this.gameState.playerCount < 4) {
+                minPlayersText.textContent = 'Minimum 4 players required to start';
+                minPlayersText.style.color = '#ffa726';
+            } else {
+                minPlayersText.textContent = 'Ready to start!';
+                minPlayersText.style.color = '#4caf50';
             }
         }
 
@@ -2488,6 +2517,29 @@ class VelmoraGame {
             autoPoliceToggle.addEventListener('change', () => {
                 this.updateRolePreview();
             });
+        }
+        
+        // Update bot settings
+        const botToggle = document.getElementById('botToggle');
+        const botCountLobby = document.getElementById('botCountLobby');
+        const botSettingsLobby = document.getElementById('botSettingsLobby');
+        
+        if (botToggle) {
+            botToggle.checked = this.gameState.settings.enableBots || false;
+            botToggle.addEventListener('change', (e) => {
+                if (botSettingsLobby) {
+                    botSettingsLobby.style.display = e.target.checked ? 'block' : 'none';
+                }
+            });
+        }
+        
+        if (botCountLobby) {
+            botCountLobby.value = this.gameState.settings.botCount || 1;
+        }
+        
+        // Set initial bot settings visibility
+        if (botSettingsLobby) {
+            botSettingsLobby.style.display = (this.gameState.settings.enableBots) ? 'block' : 'none';
         }
         
         // Show settings only to host

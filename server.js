@@ -6,6 +6,7 @@ const path = require('path');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const Database = require('./database-simple');
+const BotManager = require('./bot-manager');
 
 const app = express();
 const server = http.createServer(app);
@@ -369,6 +370,9 @@ const userSessions = new Map(); // Track user sessions for authentication
 // Lobby management
 const publicLobbies = new Map(); // Track public lobbies for browsing
 
+// Bot management
+const roomBotManagers = new Map(); // roomCode -> BotManager instance
+
 // Create a new room with initial state
 function createRoom(roomCode, hostId, lobbyInfo = null) {
     return {
@@ -396,7 +400,10 @@ function createRoom(roomCode, hostId, lobbyInfo = null) {
             // New role toggles
             suicideBomberEnabled: lobbyInfo?.suicideBomberEnabled || false,
             manipulatorEnabled: lobbyInfo?.manipulatorEnabled || false,
-            autoPoliceRoles: lobbyInfo?.autoPoliceRoles !== false
+            autoPoliceRoles: lobbyInfo?.autoPoliceRoles !== false,
+            // Bot settings
+            enableBots: lobbyInfo?.enableBots || false,
+            botCount: lobbyInfo?.botCount || 1
         },
         // Win tracking
         winStats: {
@@ -540,6 +547,215 @@ function generateRoles(playerCount, settings) {
     console.log(`- ${civilianCount} Civilians`);
     
     return roles;
+}
+
+// Bot management functions
+function createBotManager(roomCode) {
+    const botManager = new BotManager();
+    roomBotManagers.set(roomCode, botManager);
+    return botManager;
+}
+
+function getBotManager(roomCode) {
+    return roomBotManagers.get(roomCode);
+}
+
+function addBotsToRoom(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || !room.settings.enableBots) return;
+
+    const currentPlayerCount = room.players.size;
+    if (currentPlayerCount >= 4) return; // Only add bots if under 4 players
+
+    const botManager = getBotManager(roomCode) || createBotManager(roomCode);
+    const botsToAdd = Math.min(room.settings.botCount, 4 - currentPlayerCount);
+
+    for (let i = 0; i < botsToAdd; i++) {
+        const bot = botManager.createBot();
+        room.players.set(bot.id, {
+            id: bot.id,
+            userId: null,
+            name: bot.name,
+            role: null,
+            alive: true,
+            isAuthenticated: false,
+            isBot: true
+        });
+    }
+
+    console.log(`Added ${botsToAdd} bots to room ${roomCode}`);
+    return botsToAdd;
+}
+
+function removeBotsFromRoom(roomCode) {
+    const room = rooms.get(roomCode);
+    const botManager = getBotManager(roomCode);
+    
+    if (!room || !botManager) return 0;
+
+    let removedCount = 0;
+    for (const [playerId, player] of room.players) {
+        if (player.isBot) {
+            room.players.delete(playerId);
+            botManager.removeBot(playerId);
+            removedCount++;
+        }
+    }
+
+    console.log(`Removed ${removedCount} bots from room ${roomCode}`);
+    return removedCount;
+}
+
+function shouldAddBots(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room || !room.settings.enableBots) return false;
+    
+    const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+    // Only add bots if there are human players present and less than 4 total needed
+    return humanPlayerCount > 0 && humanPlayerCount < 4;
+}
+
+function hasHumanPlayers(roomCode) {
+    const room = rooms.get(roomCode);
+    if (!room) return false;
+    
+    const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+    return humanPlayerCount > 0;
+}
+
+function scheduleBotVoting(roomCode) {
+    const room = rooms.get(roomCode);
+    const botManager = getBotManager(roomCode);
+    
+    if (!room || !botManager || room.phase !== 'day') {
+        console.log(`❌ Cannot schedule bot voting: room=${!!room}, botManager=${!!botManager}, phase=${room?.phase}`);
+        return;
+    }
+    
+    const alivePlayers = Array.from(room.players.values())
+        .filter(p => !room.deadPlayers.has(p.id));
+    
+    const aliveBots = alivePlayers.filter(p => p.isBot);
+    
+    console.log(`🤖 Scheduling voting for ${aliveBots.length} bots in room ${roomCode}`);
+    
+    if (aliveBots.length === 0) {
+        console.log(`⚠️ No alive bots found to schedule voting`);
+        return;
+    }
+    
+    // Schedule voting for each alive bot
+    aliveBots.forEach(bot => {
+        const gameState = {
+            currentVotes: room.votes,
+            phase: room.phase,
+            dayCount: room.dayCount
+        };
+        
+        botManager.scheduleBotVote(bot.id, alivePlayers, gameState, (botId, targetId) => {
+            // Execute bot vote
+            executeBotVote(roomCode, botId, targetId);
+        });
+    });
+}
+
+function executeBotVote(roomCode, botId, targetId) {
+    const room = rooms.get(roomCode);
+    
+    if (!room || room.phase !== 'day' || room.deadPlayers.has(botId)) {
+        console.log(`❌ Bot vote rejected: room=${!!room}, phase=${room?.phase}, botDead=${room?.deadPlayers.has(botId)}`);
+        return;
+    }
+    
+    // Validate target
+    if (room.deadPlayers.has(targetId) || targetId === botId) {
+        console.log(`❌ Bot vote invalid target: targetDead=${room.deadPlayers.has(targetId)}, selfVote=${targetId === botId}`);
+        return;
+    }
+    
+    // Store the vote
+    room.votes.set(botId, targetId);
+    const targetPlayer = room.players.get(targetId);
+    const botPlayer = room.players.get(botId);
+    
+    console.log(`✅ Bot vote stored: ${botPlayer?.name} → ${targetPlayer?.name} (Total votes: ${room.votes.size})`);
+    
+    if (!targetPlayer || !botPlayer) {
+        console.log(`❌ Missing player data: bot=${!!botPlayer}, target=${!!targetPlayer}`);
+        return;
+    }
+    
+    // Broadcast vote information (same as human votes)
+    const voteCounts = new Map();
+    const voteDetails = [];
+    
+    for (const [voter, target] of room.votes) {
+        if (!room.deadPlayers.has(voter)) {
+            voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
+            
+            const voterName = room.players.get(voter).name;
+            const targetName = room.players.get(target).name;
+            voteDetails.push({
+                voterName: voterName,
+                targetName: targetName,
+                voterId: voter,
+                targetId: target
+            });
+        }
+    }
+    
+    io.to(roomCode).emit('voteUpdate', {
+        totalVotes: room.votes.size,
+        alivePlayers: Array.from(room.players.keys()).filter(id => !room.deadPlayers.has(id)).length,
+        voteCounts: Array.from(voteCounts.entries()).map(([playerId, votes]) => ({
+            playerName: room.players.get(playerId).name,
+            votes: votes
+        })),
+        voteDetails: voteDetails,
+        latestVote: {
+            voterName: botPlayer.name,
+            targetName: targetPlayer.name,
+            isBot: true
+        }
+    });
+    
+    // Update bot manager with voting event
+    const botManager = getBotManager(roomCode);
+    if (botManager) {
+        botManager.onGameEvent('voteReceived', {
+            voterPlayerId: botId,
+            targetPlayerId: targetId,
+            phase: room.phase
+        });
+    }
+    
+    console.log(`Bot ${botPlayer.name} voted for ${targetPlayer.name} in room ${roomCode}`);
+    
+    // Check if all alive players have voted (including bots)
+    const alivePlayers = Array.from(room.players.keys()).filter(id => !room.deadPlayers.has(id));
+    const votersWhoVoted = Array.from(room.votes.keys()).filter(id => !room.deadPlayers.has(id));
+    
+    if (votersWhoVoted.length === alivePlayers.length) {
+        // All alive players have voted, process immediately
+        console.log(`🎯 All ${alivePlayers.length} alive players voted in room ${roomCode} - processing votes early (bot triggered)`);
+        
+        // Clear existing timer
+        if (room.timer) {
+            clearInterval(room.timer);
+            room.timer = null;
+        }
+        
+        // Notify clients that voting ended early
+        io.to(roomCode).emit('phaseEnded', {
+            reason: 'All players voted',
+            message: 'All players have voted! Processing results...'
+        });
+        
+        // Process votes after a brief delay
+        setTimeout(() => {
+            processVotesAndStartNight(roomCode);
+        }, 2000); // 2 second delay to show results
+    }
 }
 
 function checkAllNightActionsComplete(roomCode) {
@@ -803,6 +1019,9 @@ function startDayPhase(roomCode) {
         message: `Day ${room.dayCount} begins! Discuss and vote - ${alivePlayers.length} players deciding fate.`
     });
     
+    // Schedule bot voting for day phase
+    scheduleBotVoting(roomCode);
+    
     // Day phase now includes voting - when timer ends, process votes and go to night
     startPhaseTimer(roomCode, DAY_DURATION, 'processVotesAndNight');
     broadcastGameStateToRoom(roomCode);
@@ -945,8 +1164,20 @@ function processVotes(roomCode) {
     const voteCounts = new Map();
     const voteDetails = new Map(); // Track who voted for whom
     
+    console.log(`📊 Processing votes for room ${roomCode}:`);
+    console.log(`  Total votes stored: ${room.votes.size}`);
+    console.log(`  Dead players: ${Array.from(room.deadPlayers).map(id => room.players.get(id)?.name).join(', ')}`);
+    console.log(`  All votes in Map:`, Array.from(room.votes.entries()).map(([voter, target]) => 
+        `${room.players.get(voter)?.name}(${room.players.get(voter)?.isBot ? 'bot' : 'human'}) → ${room.players.get(target)?.name}`).join(', '));
+    
     // Count votes from alive players only
     for (const [voter, target] of room.votes) {
+        const voterPlayer = room.players.get(voter);
+        const targetPlayer = room.players.get(target);
+        const isVoterDead = room.deadPlayers.has(voter);
+        
+        console.log(`  Vote: ${voterPlayer?.name} → ${targetPlayer?.name} (voter dead: ${isVoterDead}, voter is bot: ${voterPlayer?.isBot})`);
+        
         if (!room.deadPlayers.has(voter)) {
             voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
             if (!voteDetails.has(target)) {
@@ -954,8 +1185,14 @@ function processVotes(roomCode) {
             }
             const voterName = room.players.get(voter).name;
             voteDetails.get(target).push(voterName);
+            console.log(`    ✅ Vote counted: ${voterName} → ${targetPlayer?.name}`);
+        } else {
+            console.log(`    ❌ Vote rejected: ${voterPlayer?.name} is dead`);
         }
     }
+    
+    console.log(`📈 Final vote counts:`, Array.from(voteCounts.entries()).map(([target, votes]) => 
+        `${room.players.get(target)?.name}: ${votes}`).join(', '));
     
     let maxVotes = 0;
     let eliminated = null;
@@ -1216,6 +1453,14 @@ function cleanupRoom(roomCode) {
     if (room && room.timer) {
         clearInterval(room.timer);
     }
+    
+    // Cleanup bot manager
+    const botManager = roomBotManagers.get(roomCode);
+    if (botManager) {
+        botManager.cleanup();
+        roomBotManagers.delete(roomCode);
+    }
+    
     rooms.delete(roomCode);
     publicLobbies.delete(roomCode); // Also remove from public lobbies
 }
@@ -1297,6 +1542,11 @@ io.on('connection', (socket) => {
         
         room.players.set(socket.id, player);
         socket.join(roomCode);
+        
+        // Check if we should add bots to reach minimum players
+        if (shouldAddBots(roomCode)) {
+            addBotsToRoom(roomCode);
+        }
         
         // Add to public lobbies if it's public
         if (room.isPublic) {
@@ -1403,6 +1653,29 @@ io.on('connection', (socket) => {
             isAuthenticated: player.isAuthenticated
         });
         
+        // Check if we should remove bots (if we now have enough human players)
+        const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+        if (humanPlayerCount >= 4 && room.settings.enableBots) {
+            removeBotsFromRoom(roomCode);
+        } else if (shouldAddBots(roomCode)) {
+            // Or add bots if we still need them (only if human players present)
+            addBotsToRoom(roomCode);
+        }
+        
+        // If this was the first human player to join a bot-only room, ensure they become host
+        if (humanPlayerCount === 1 && room.players.size > 1) {
+            const currentHost = room.players.get(room.hostId);
+            if (currentHost && currentHost.isBot) {
+                // Transfer host from bot to human player
+                room.hostId = socket.id;
+                socket.to(roomCode).emit('hostChanged', {
+                    newHostId: socket.id,
+                    newHostName: player.name
+                });
+                console.log(`Host transferred from bot to human player ${player.name} in room ${roomCode}`);
+            }
+        }
+        
         broadcastGameStateToRoom(roomCode);
         updatePublicLobby(roomCode);
         console.log(`${playerName} joined room ${roomCode}${userId ? ` (ID: ${userId})` : ' (Guest)'}`);
@@ -1430,21 +1703,46 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // Ensure there's at least 1 human player
+        const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+        if (humanPlayerCount === 0) {
+            socket.emit('error', 'Cannot start game with only bots');
+            return;
+        }
+        
         if (room.gameStarted) {
             socket.emit('error', 'Game already started');
             return;
         }
         
-        // Validate mafia count against current player count (not max players)
+        // Validate mafia count against total player count (roles generated normally, but bots get civilians)
         const currentPlayerCount = room.players.size;
-        const maxAllowedMafiaForCurrentPlayers = getMaxMafiaCount(currentPlayerCount);
-        if (room.settings.mafiaCount > maxAllowedMafiaForCurrentPlayers) {
-            socket.emit('error', `Cannot start game: ${room.settings.mafiaCount} Mafia is too many for ${currentPlayerCount} players. Maximum allowed: ${maxAllowedMafiaForCurrentPlayers}`);
+        const maxAllowedMafia = getMaxMafiaCount(currentPlayerCount);
+        
+        if (room.settings.mafiaCount > maxAllowedMafia) {
+            socket.emit('error', `Cannot start game: ${room.settings.mafiaCount} Mafia is too many for ${currentPlayerCount} players. Maximum allowed: ${maxAllowedMafia}`);
             return;
         }
         
-        // Assign roles
-        const roles = generateRoles(room.players.size, room.settings);
+        console.log(`✅ Mafia validation passed: ${room.settings.mafiaCount} mafia for ${currentPlayerCount} total players (${humanPlayerCount} humans, ${currentPlayerCount - humanPlayerCount} bots)`);
+        
+        // Generate roles for all players normally
+        const allRoles = generateRoles(room.players.size, room.settings);
+        
+        // Remove civilian roles equal to number of bots (so bots don't take special roles)
+        const botCount = Array.from(room.players.values()).filter(p => p.isBot).length;
+        const roles = [];
+        let civiliansRemoved = 0;
+        
+        for (const role of allRoles) {
+            if (role === ROLES.CIVILIAN && civiliansRemoved < botCount) {
+                civiliansRemoved++; // Skip this civilian role (bot will get it)
+            } else {
+                roles.push(role); // Keep this role for humans
+            }
+        }
+        
+        console.log(`🎭 Generated ${allRoles.length} total roles, removed ${civiliansRemoved} civilians for bots, ${roles.length} roles left for humans`);
         let roleIndex = 0;
         
         // Send game start announcement to all players
@@ -1458,8 +1756,21 @@ io.on('connection', (socket) => {
         setTimeout(() => {
             const mafiaMembers = [];
             
-            for (const [playerId, player] of room.players) {
+            // Step 1: First assign civilian roles to all bots
+            const botPlayers = Array.from(room.players.entries()).filter(([id, player]) => player.isBot);
+            for (const [playerId, player] of botPlayers) {
+                player.role = ROLES.CIVILIAN;
+                console.log(`🤖 Bot ${player.name} assigned role: ${player.role} (pre-assigned)`);
+            }
+            
+            // Step 2: Then assign remaining roles to human players normally
+            const humanPlayers = Array.from(room.players.entries()).filter(([id, player]) => !player.isBot);
+            let roleIndex = 0;
+            
+            for (const [playerId, player] of humanPlayers) {
                 player.role = roles[roleIndex++];
+                
+                console.log(`👤 Human ${player.name} assigned role: ${player.role}`);
                 
                 // Collect mafia members for later team information sharing (include special mafia roles)
                 if (player.role === ROLES.MAFIA || player.role === ROLES.SUICIDE_BOMBER || player.role === ROLES.MANIPULATOR) {
@@ -1487,6 +1798,13 @@ io.on('connection', (socket) => {
             room.gameStarted = true;
             room.gameStartTime = Date.now(); // Track when game started for statistics
             
+            // Initialize bot manager for this game
+            const botManager = getBotManager(roomCode);
+            if (botManager) {
+                const allPlayers = Array.from(room.players.values());
+                botManager.onGameEvent('gameStarted', { allPlayers });
+            }
+            
             // Start night phase after a brief delay to allow role reading
             setTimeout(() => {
                 startNightPhase(roomCode);
@@ -1497,7 +1815,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('updateRoomSettings', (data) => {
-        const { roomCode, maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles } = data;
+        const { roomCode, maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles, enableBots, botCount } = data;
         const room = rooms.get(roomCode);
         
         if (!room) {
@@ -1545,6 +1863,25 @@ io.on('connection', (socket) => {
         room.settings.suicideBomberEnabled = suicideBomberEnabled !== undefined ? suicideBomberEnabled : room.settings.suicideBomberEnabled;
         room.settings.manipulatorEnabled = manipulatorEnabled !== undefined ? manipulatorEnabled : room.settings.manipulatorEnabled;
         room.settings.autoPoliceRoles = autoPoliceRoles !== undefined ? autoPoliceRoles : room.settings.autoPoliceRoles;
+        room.settings.enableBots = enableBots !== undefined ? enableBots : room.settings.enableBots;
+        room.settings.botCount = botCount !== undefined ? botCount : room.settings.botCount;
+        
+        // Handle bot settings changes
+        if (enableBots !== undefined || botCount !== undefined) {
+            const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+            
+            if (!room.settings.enableBots) {
+                // Bots disabled - remove all bots
+                removeBotsFromRoom(roomCode);
+            } else if (shouldAddBots(roomCode)) {
+                // Remove existing bots and add new ones based on settings
+                removeBotsFromRoom(roomCode);
+                addBotsToRoom(roomCode);
+            } else if (humanPlayerCount >= 4) {
+                // Enough human players - remove bots
+                removeBotsFromRoom(roomCode);
+            }
+        }
         
         // Broadcast updated settings to all players in room
         io.to(roomCode).emit('roomSettingsUpdated', {
@@ -1552,11 +1889,13 @@ io.on('connection', (socket) => {
             mafiaCount: mafiaCount,
             suicideBomberEnabled: room.settings.suicideBomberEnabled,
             manipulatorEnabled: room.settings.manipulatorEnabled,
-            autoPoliceRoles: room.settings.autoPoliceRoles
+            autoPoliceRoles: room.settings.autoPoliceRoles,
+            enableBots: room.settings.enableBots,
+            botCount: room.settings.botCount
         });
         
         broadcastGameStateToRoom(roomCode);
-        console.log(`Room ${roomCode} settings updated: ${maxPlayers} max players, ${mafiaCount} mafia`);
+        console.log(`Room ${roomCode} settings updated: ${maxPlayers} max players, ${mafiaCount} mafia, bots: ${room.settings.enableBots}`);
     });
     
     socket.on('vote', (data) => {
@@ -1641,9 +1980,9 @@ io.on('connection', (socket) => {
             console.log(`All ${alivePlayers.length} alive players voted in room ${roomCode} - processing votes early`);
             
             // Clear existing timer
-            if (room.phaseTimer) {
-                clearTimeout(room.phaseTimer);
-                room.phaseTimer = null;
+            if (room.timer) {
+                clearInterval(room.timer);
+                room.timer = null;
             }
             
             // Notify clients that voting ended early
@@ -2008,15 +2347,24 @@ io.on('connection', (socket) => {
 
         // Handle host transfer if the host left
         if (socket.id === room.hostId && room.players.size > 0) {
-            // Transfer host to the next player in the room
-            const newHostId = Array.from(room.players.keys())[0];
-            room.hostId = newHostId;
-            const newHost = room.players.get(newHostId);
-            io.to(roomCode).emit('hostChanged', {
-                newHostId: newHostId,
-                newHostName: newHost.name
-            });
-            console.log(`Host transferred to ${newHost.name} in room ${roomCode}`);
+            // Find the next human player to transfer host to (never transfer to bots)
+            const humanPlayers = Array.from(room.players.entries()).filter(([id, player]) => !player.isBot);
+            
+            if (humanPlayers.length > 0) {
+                // Transfer host to first human player
+                const [newHostId, newHost] = humanPlayers[0];
+                room.hostId = newHostId;
+                io.to(roomCode).emit('hostChanged', {
+                    newHostId: newHostId,
+                    newHostName: newHost.name
+                });
+                console.log(`Host transferred to ${newHost.name} in room ${roomCode}`);
+                             } else {
+                     // No human players left - close the lobby (prevent bot from becoming host)
+                     console.log(`🤖 PROTECTION: No human players left in room ${roomCode} - closing lobby to prevent bot host`);
+                     cleanupRoom(roomCode);
+                     return; // Exit early since room is being cleaned up
+                 }
         }
 
         // Clean up empty rooms or reset game if not enough players
@@ -2177,15 +2525,24 @@ io.on('connection', (socket) => {
             
             // Handle host transfer if the host left
             if (socket.id === room.hostId && room.players.size > 0) {
-                // Transfer host to the next player in the room
-                const newHostId = Array.from(room.players.keys())[0];
-                room.hostId = newHostId;
-                const newHost = room.players.get(newHostId);
-                io.to(roomCode).emit('hostChanged', {
-                    newHostId: newHostId,
-                    newHostName: newHost.name
-                });
-                console.log(`Host transferred to ${newHost.name} in room ${roomCode}`);
+                // Find the next human player to transfer host to (never transfer to bots)
+                const humanPlayers = Array.from(room.players.entries()).filter(([id, player]) => !player.isBot);
+                
+                if (humanPlayers.length > 0) {
+                    // Transfer host to first human player
+                    const [newHostId, newHost] = humanPlayers[0];
+                    room.hostId = newHostId;
+                    io.to(roomCode).emit('hostChanged', {
+                        newHostId: newHostId,
+                        newHostName: newHost.name
+                    });
+                    console.log(`Host transferred to ${newHost.name} in room ${roomCode}`);
+                } else {
+                    // No human players left - close the lobby (prevent bot from becoming host)
+                    console.log(`🤖 PROTECTION: No human players left in room ${roomCode} - closing lobby to prevent bot host`);
+                    cleanupRoom(roomCode);
+                    return; // Exit early since room is being cleaned up
+                }
             }
             
             // Clean up empty rooms or reset game if not enough players
@@ -2207,9 +2564,21 @@ io.on('connection', (socket) => {
                 io.to(roomCode).emit('gameReset', 'Not enough players, returning to lobby');
             }
             
+            // Check if we should add bots after a player leaves
             if (room.players.size > 0) {
-                broadcastGameStateToRoom(roomCode);
-                updatePublicLobby(roomCode);
+                if (hasHumanPlayers(roomCode)) {
+                    // Only manage bots if there are still human players
+                    if (shouldAddBots(roomCode)) {
+                        addBotsToRoom(roomCode);
+                    }
+                    
+                    broadcastGameStateToRoom(roomCode);
+                    updatePublicLobby(roomCode);
+                                 } else {
+                     // No human players left - close the lobby (prevent bot from becoming host)
+                     console.log(`🤖 PROTECTION: No human players left in room ${roomCode} after disconnect - closing lobby to prevent bot host`);
+                     cleanupRoom(roomCode);
+                 }
             }
         }
     });

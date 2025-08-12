@@ -68,6 +68,10 @@ class LobbyManager {
 
         // Dynamic max players and mafia count
         document.getElementById('maxPlayersCreate').addEventListener('change', () => this.updateMafiaOptions());
+        
+        // Bot settings
+        document.getElementById('enableBotsCreate').addEventListener('change', (e) => this.toggleBotSettings('Create', e.target.checked));
+        document.getElementById('botToggle').addEventListener('change', (e) => this.toggleBotSettings('Lobby', e.target.checked));
     }
 
     setupSettingsListeners() {
@@ -180,6 +184,8 @@ class LobbyManager {
             const suicideBomberEnabled = document.getElementById('suicideBomberCreate').checked;
             const manipulatorEnabled = document.getElementById('manipulatorCreate').checked;
             const autoPoliceRoles = document.getElementById('autoPoliceCreate').checked;
+            const enableBots = document.getElementById('enableBotsCreate').checked;
+            const botCount = parseInt(document.getElementById('botCountCreate').value);
 
             if (!lobbyName) {
                 this.showNotification('Please enter a lobby name', 'error');
@@ -195,7 +201,9 @@ class LobbyManager {
                 mafiaCount,
                 suicideBomberEnabled,
                 manipulatorEnabled,
-                autoPoliceRoles
+                autoPoliceRoles,
+                enableBots,
+                botCount
             };
 
             // Check if user is authenticated or guest
@@ -280,6 +288,13 @@ class LobbyManager {
         } else {
             suicideBomberCheckbox.disabled = false;
             suicideBomberCheckbox.parentElement.style.opacity = '1';
+        }
+    }
+
+    toggleBotSettings(context, enabled) {
+        const settingsDiv = document.getElementById(`botSettings${context}`);
+        if (settingsDiv) {
+            settingsDiv.style.display = enabled ? 'block' : 'none';
         }
     }
 

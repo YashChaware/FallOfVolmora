@@ -386,6 +386,27 @@
                                 Auto Police Roles (10+ players)
                             </label>
                         </div>
+                        
+                        <div class="checkbox-group">
+                            <h4>AI Bots</h4>
+                            <label class="checkbox-option">
+                                <input type="checkbox" id="enableBotsCreate">
+                                <span class="checkbox-custom"></span>
+                                Enable AI Bots (Fill lobby when under 4 players)
+                            </label>
+                            <div class="bot-settings" id="botSettingsCreate" style="display: none; margin-left: 25px; margin-top: 10px;">
+                                <div class="setting-item">
+                                    <label for="botCountCreate">Number of Bots (0-3):</label>
+                                    <select id="botCountCreate">
+                                        <option value="0">0 Bots</option>
+                                        <option value="1" selected>1 Bot</option>
+                                        <option value="2">2 Bots</option>
+                                        <option value="3">3 Bots</option>
+                                    </select>
+                                </div>
+                                <small class="bot-help-text">Bots will only be added if there are fewer than 4 total players in the lobby</small>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="form-actions">
@@ -625,6 +646,24 @@
                                     <small>Automatically add White/Black/Gray Police for 10+ players</small>
                                 </label>
                             </div>
+                            <div class="toggle-item" id="botToggleContainer">
+                                <label for="botToggle">
+                                    <input type="checkbox" id="botToggle">
+                                    🤖 AI Bots (Fill lobby when under 4 players)
+                                    <small>Add intelligent AI bots to reach minimum 4 players</small>
+                                </label>
+                                <div class="bot-settings" id="botSettingsLobby" style="display: none; margin-left: 25px; margin-top: 10px;">
+                                    <div class="setting-item">
+                                        <label for="botCountLobby">Number of Bots (0-3):</label>
+                                        <select id="botCountLobby">
+                                            <option value="0">0 Bots</option>
+                                            <option value="1" selected>1 Bot</option>
+                                            <option value="2">2 Bots</option>
+                                            <option value="3">3 Bots</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <button id="updateSettingsButton" class="secondary-btn">Update Settings</button>
                         <div class="mafia-limits-info">
@@ -823,6 +862,7 @@
     <script src="audio-manager.js"></script>
     <script src="auth-manager.js"></script>
     <script src="hamburger-menu.js"></script>
+    <script src="bot-manager.js"></script>
     <script src="lobby-manager.js"></script>
     <script src="main.js"></script>
 </body>

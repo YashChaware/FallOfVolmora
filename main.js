@@ -4172,6 +4172,7 @@ class VelmoraGame {
         const prev = document.getElementById('tutorialPrev');
         prev.style.display = prevVisible ? 'inline-block' : 'none';
         const next = document.getElementById('tutorialNext');
+        next.style.display = 'inline-block';
         next.textContent = nextText;
         next.onclick = () => onNext && onNext();
         prev.onclick = () => onPrev && onPrev();
@@ -4376,10 +4377,8 @@ class VelmoraGame {
             title = 'Night Action: Choose someone to protect';
             buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Protect ${p.name}</button>`).join(' ');
         } else if (role === 'detective') {
-            title = stage === 0 ? 'Investigate: Choose AI Beta (Mafia)' : 'Investigate: Choose AI Alpha (Civilian)';
-            const target = stage === 0 ? 'bot2' : 'bot1';
-            const label = stage === 0 ? 'Investigate AI Beta' : 'Investigate AI Alpha';
-            buttons = `<button class="btn-secondary sandbox-target" data-id="${target}">${label}</button>`;
+            title = stage === 0 ? 'Investigate: Choose a target (first will reveal Mafia)' : 'Investigate: Choose a target (second will reveal Civilian)';
+            buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Investigate ${p.name}</button>`).join(' ');
         } else if (role === 'white_police') {
             title = 'Day Coordination: Identify a safe vote. (Example only — no real elimination.)';
             buttons = others.filter(p => p.alive).map(p => `<button class=\"btn-secondary sandbox-target\" data-id=\"${p.id}\">Mark ${p.name} as suspicious</button>`).join(' ');
@@ -4421,9 +4420,9 @@ class VelmoraGame {
             this.showTutorial(`You protected ${target?.name || 'someone'}. If they were attacked tonight, your protection would save them.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
         } else if (role === 'detective') {
             if (stage === 0) {
-                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Mafia.`, { nextText: 'Continue', onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); } });
+                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Mafia.`, { nextText: 'Continue', showOk: false, onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); } });
             } else {
-                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Civilian.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Civilian.`, { nextText: 'Finish', showOk: false, onNext: () => this.finishSandbox() });
             }
         } else if (role === 'white_police') {
             this.showTutorial(`You marked ${target?.name || 'someone'} as suspicious. In real games, coordinate and avoid rushing votes.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });

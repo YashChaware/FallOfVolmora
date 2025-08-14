@@ -539,6 +539,8 @@ function createRoom(roomCode, hostId, lobbyInfo = null) {
         // Invite quota window
         inviteWindowStart: Date.now(),
         invitesSentInWindow: 0,
+        // Tutorial metadata
+        tutorial: lobbyInfo?.tutorial || { active: false, step: 0, forceRole: null },
         // Win tracking
         winStats: {
             mafiaWins: 0,
@@ -699,10 +701,14 @@ function addBotsToRoom(roomCode) {
     if (!room || !room.settings.enableBots) return;
 
     const currentPlayerCount = room.players.size;
-    if (currentPlayerCount >= 4) return; // Only add bots if under 4 players
+    // In tutorial, allow exceeding the default 4-player cap to match desired botCount
+    if (!room.tutorial?.active && currentPlayerCount >= 4) return; // Only add bots if under 4 players in normal games
 
     const botManager = getBotManager(roomCode) || createBotManager(roomCode);
-    const botsToAdd = Math.min(room.settings.botCount, 4 - currentPlayerCount);
+    // Desired total players: normal = 4; tutorial = 1 human + configured botCount
+    const humanCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+    const desiredTotal = room.tutorial?.active ? (humanCount + (room.settings.botCount || 3)) : 4;
+    const botsToAdd = Math.max(0, desiredTotal - currentPlayerCount);
 
     for (let i = 0; i < botsToAdd; i++) {
         const bot = botManager.createBot();
@@ -1157,9 +1163,11 @@ function startDayPhase(roomCode) {
     scheduleBotVoting(roomCode);
     
     // Day phase now includes voting - when timer ends, process votes and go to night
-    startPhaseTimer(roomCode, DAY_DURATION, 'processVotesAndNight');
+    const isTutorial = room.tutorial?.active === true;
+    const dayDuration = isTutorial ? 25 : DAY_DURATION;
+    startPhaseTimer(roomCode, dayDuration, 'processVotesAndNight');
     broadcastGameStateToRoom(roomCode);
-    console.log(`Day ${room.dayCount} started in room ${roomCode} - ${DAY_DURATION} seconds for discussion and voting`);
+    console.log(`Day ${room.dayCount} started in room ${roomCode} - ${dayDuration} seconds for discussion and voting`);
 }
 
 function processNightActions(roomCode) {
@@ -1281,11 +1289,13 @@ function startNightPhase(roomCode) {
         message: nightMessage
     });
     
-    startPhaseTimer(roomCode, NIGHT_DURATION, 'day');
+    const isTutorial = room.tutorial?.active === true;
+    const nightDuration = isTutorial ? 20 : NIGHT_DURATION;
+    startPhaseTimer(roomCode, nightDuration, 'day');
     broadcastGameStateToRoom(roomCode);
     
     const nightLabel = isFirstNight ? 'Night 0 (First Night)' : `Night ${room.dayCount}`;
-    console.log(`${nightLabel} started in room ${roomCode} - ${NIGHT_DURATION} seconds for actions`);
+    console.log(`${nightLabel} started in room ${roomCode} - ${nightDuration} seconds for actions`);
 }
 
 // Voting phase has been integrated into the day phase
@@ -1663,6 +1673,27 @@ io.on('connection', (socket) => {
         
         const roomCode = data.roomCode || generateRoomCode();
         const room = createRoom(roomCode, socket.id, lobbyInfo);
+        
+        // Tutorial rooms are always private and have bots to fill
+        if (room.tutorial?.enabled) {
+            room.isPublic = false;
+            room.settings.enableBots = true;
+            // Pre-add bots to reach at least 5 players total (host + 4 bots)
+            const botManager = getBotManager(roomCode) || createBotManager(roomCode);
+            while (room.players.size < 5) {
+                const bot = botManager.createBot();
+                room.players.set(bot.id, {
+                    id: bot.id,
+                    userId: null,
+                    name: bot.name,
+                    role: null,
+                    alive: true,
+                    isAuthenticated: false,
+                    isBot: true
+                });
+            }
+        }
+        
         rooms.set(roomCode, room);
         
         const player = {
@@ -1678,7 +1709,7 @@ io.on('connection', (socket) => {
         socket.join(roomCode);
         
         // Check if we should add bots to reach minimum players
-        if (shouldAddBots(roomCode)) {
+        if (!room.tutorial?.enabled && shouldAddBots(roomCode)) {
             addBotsToRoom(roomCode);
         }
         
@@ -1705,6 +1736,14 @@ io.on('connection', (socket) => {
             isAuthenticated: player.isAuthenticated,
             lobbyInfo: lobbyInfo
         });
+    
+        // If tutorial, hint client to auto-start
+        if (room.tutorial?.enabled) {
+            io.to(socket.id).emit('tutorialInfo', {
+                step: room.tutorial.step,
+                message: 'Tutorial room created. The game will auto-start to teach your role.'
+            });
+        }
         
         broadcastGameStateToRoom(roomCode);
         updatePublicLobby(roomCode);
@@ -1860,7 +1899,7 @@ io.on('connection', (socket) => {
         const currentPlayerCount = room.players.size;
         const maxAllowedMafia = getMaxMafiaCount(currentPlayerCount);
         
-        if (room.settings.mafiaCount > maxAllowedMafia) {
+        if (room.settings.mafiaCount > maxAllowedMafia && !room.tutorial?.enabled) {
             socket.emit('error', `Cannot start game: ${room.settings.mafiaCount} Mafia is too many for ${currentPlayerCount} players. Maximum allowed: ${maxAllowedMafia}`);
             return;
         }
@@ -1869,6 +1908,10 @@ io.on('connection', (socket) => {
         
         // Generate roles for all players normally
         const allRoles = generateRoles(room.players.size, room.settings);
+        
+        // Tutorial forced role assignment overrides normal distribution
+        const isTutorial = room.tutorial?.active === true;
+        const forcedRole = room.tutorial?.forceRole;
         
         // Remove civilian roles equal to number of bots (so bots don't take special roles)
         const botCount = Array.from(room.players.values()).filter(p => p.isBot).length;
@@ -1883,9 +1926,6 @@ io.on('connection', (socket) => {
             }
         }
         
-        console.log(`🎭 Generated ${allRoles.length} total roles, removed ${civiliansRemoved} civilians for bots, ${roles.length} roles left for humans`);
-        let roleIndex = 0;
-        
         // Send game start announcement to all players
         io.to(roomCode).emit('gameStarting', {
             message: `🎮 Game is starting! ${room.players.size} players, ${room.settings.mafiaCount} mafia members. The night begins... Roles are being assigned.`,
@@ -1897,62 +1937,167 @@ io.on('connection', (socket) => {
         setTimeout(() => {
             const mafiaMembers = [];
             
-            // Step 1: First assign civilian roles to all bots
-            const botPlayers = Array.from(room.players.entries()).filter(([id, player]) => player.isBot);
-            for (const [playerId, player] of botPlayers) {
-                player.role = ROLES.CIVILIAN;
-                console.log(`🤖 Bot ${player.name} assigned role: ${player.role} (pre-assigned)`);
-            }
-            
-            // Step 2: Then assign remaining roles to human players normally
-            const humanPlayers = Array.from(room.players.entries()).filter(([id, player]) => !player.isBot);
-            let roleIndex = 0;
-            
-            for (const [playerId, player] of humanPlayers) {
-                player.role = roles[roleIndex++];
-                
-                console.log(`👤 Human ${player.name} assigned role: ${player.role}`);
-                
-                // Collect mafia members for later team information sharing (include special mafia roles)
-                if (player.role === ROLES.MAFIA || player.role === ROLES.SUICIDE_BOMBER || player.role === ROLES.MANIPULATOR) {
-                    mafiaMembers.push({ id: playerId, name: player.name, role: player.role });
+            if (room.tutorial?.active || room.tutorial?.enabled) {
+                // Assign tutorial roles
+                const hostId = room.hostId;
+                const bots = Array.from(room.players.entries()).filter(([id, p]) => p.isBot);
+                const humans = Array.from(room.players.entries()).filter(([id, p]) => !p.isBot);
+                // Reset all roles
+                for (const [pid, player] of room.players) {
+                    player.role = ROLES.CIVILIAN;
                 }
                 
-                // Send role info to player
-                io.to(playerId).emit('roleAssigned', {
-                    role: player.role,
-                    description: ROLE_DESCRIPTIONS[player.role]
-                });
-            }
-            
-            // Send mafia team information to all mafia members
-            if (mafiaMembers.length > 1) {
-                mafiaMembers.forEach(mafiaPlayer => {
-                    const teammates = mafiaMembers.filter(member => member.id !== mafiaPlayer.id);
-                    io.to(mafiaPlayer.id).emit('mafiaTeamInfo', {
-                        teammates: teammates,
-                        message: `Your mafia teammates: ${teammates.map(t => t.name).join(', ')}`
+                // Ensure at least one mafia bot when needed
+                const ensureMafiaBot = () => {
+                    const mafiaBot = bots[0]?.[0];
+                    if (mafiaBot) {
+                        room.players.get(mafiaBot).role = ROLES.MAFIA;
+                        mafiaMembers.push({ id: mafiaBot, name: room.players.get(mafiaBot).name, role: ROLES.MAFIA });
+                    }
+                };
+                
+                switch (room.tutorial.step) {
+                    case 'mafia':
+                        if (humans[0]) {
+                            const [hid, hplayer] = humans[0];
+                            hplayer.role = ROLES.MAFIA;
+                            mafiaMembers.push({ id: hid, name: hplayer.name, role: ROLES.MAFIA });
+                            io.to(hid).emit('roleAssigned', { role: ROLES.MAFIA, description: ROLE_DESCRIPTIONS[ROLES.MAFIA] });
+                            io.to(hid).emit('tutorialInfo', { step: 'mafia', message: 'You are Mafia. Learn how to eliminate at night and blend in during the day.' });
+                        }
+                        break;
+                    case 'doctor':
+                        ensureMafiaBot();
+                        if (humans[0]) {
+                            const [hid, hplayer] = humans[0];
+                            hplayer.role = ROLES.DOCTOR;
+                            io.to(hid).emit('roleAssigned', { role: ROLES.DOCTOR, description: ROLE_DESCRIPTIONS[ROLES.DOCTOR] });
+                            io.to(hid).emit('tutorialInfo', { step: 'doctor', message: 'You are the Doctor. At night, protect a player from being killed.' });
+                        }
+                        break;
+                    case 'detective':
+                        ensureMafiaBot();
+                        if (humans[0]) {
+                            const [hid, hplayer] = humans[0];
+                            hplayer.role = ROLES.DETECTIVE;
+                            io.to(hid).emit('roleAssigned', { role: ROLES.DETECTIVE, description: ROLE_DESCRIPTIONS[ROLES.DETECTIVE] });
+                            io.to(hid).emit('tutorialInfo', { step: 'detective', message: 'You are the Detective. Investigate a player at night to learn their alignment.' });
+                        }
+                        break;
+                    case 'police':
+                        ensureMafiaBot();
+                        if (humans[0]) {
+                            const [hid, hplayer] = humans[0];
+                            hplayer.role = ROLES.WHITE_POLICE;
+                            io.to(hid).emit('roleAssigned', { role: ROLES.WHITE_POLICE, description: ROLE_DESCRIPTIONS[ROLES.WHITE_POLICE] });
+                            io.to(hid).emit('tutorialInfo', { step: 'police', message: 'You are Police. Coordinate and use your unique win conditions wisely.' });
+                        }
+                        break;
+                    case 'gray_police':
+                        // Let client choose alignment; keep as civilian placeholder for now
+                        if (humans[0]) {
+                            const [hid, hplayer] = humans[0];
+                            hplayer.role = ROLES.CIVILIAN;
+                            io.to(hid).emit('tutorialInfo', { step: 'gray_police', message: 'Choose your allegiance: Black (Mafia) or White (Town).' });
+                        }
+                        break;
+                    case 'suicide_bomber':
+                        // Ensure another mafia-aligned entity exists for context
+                        ensureMafiaBot();
+                        if (humans[0]) {
+                            const [hid, hplayer] = humans[0];
+                            hplayer.role = ROLES.SUICIDE_BOMBER;
+                            mafiaMembers.push({ id: hid, name: hplayer.name, role: ROLES.SUICIDE_BOMBER });
+                            io.to(hid).emit('roleAssigned', { role: ROLES.SUICIDE_BOMBER, description: ROLE_DESCRIPTIONS[ROLES.SUICIDE_BOMBER] });
+                            io.to(hid).emit('tutorialInfo', { step: 'suicide_bomber', message: 'You are the Suicide Bomber. If discovered and about to be eliminated, choose who to take down with you. Doctor protection applies.' });
+                        }
+                        break;
+                }
+                
+                // Notify mafia team if applicable
+                if (mafiaMembers.length > 1) {
+                    // Identify black police to also receive visibility
+                    const blackPoliceIds = Array.from(room.players.entries())
+                        .filter(([id, p]) => p.role === ROLES.BLACK_POLICE)
+                        .map(([id]) => id);
+                    mafiaMembers.forEach(mafiaPlayer => {
+                        const teammates = mafiaMembers.filter(member => member.id !== mafiaPlayer.id);
+                        // Send to mafia members
+                        io.to(mafiaPlayer.id).emit('mafiaTeamInfo', {
+                            teammates: teammates,
+                            message: `Your mafia teammates: ${teammates.map(t => t.name).join(', ')}`
+                        });
+                        // Also inform black police, but as observers (no teammates list shown to players directly)
+                        for (const bpId of blackPoliceIds) {
+                            io.to(bpId).emit('mafiaTeamInfo', {
+                                teammates: teammates,
+                                message: `Mafia members present: ${teammates.map(t => t.name).join(', ')}`
+                            });
+                        }
                     });
-                });
+                }
+                
+                room.gameStarted = true;
+                room.gameStartTime = Date.now();
+                const botManager = getBotManager(roomCode);
+                if (botManager) {
+                    const allPlayers = Array.from(room.players.values());
+                    botManager.onGameEvent('gameStarted', { allPlayers });
+                }
+                
+                // Continue normal flow (start night phase etc.)
+                // ... existing code continues below ...
+            } else {
+                // Non-tutorial existing assignment flow
+                const botPlayers = Array.from(room.players.entries()).filter(([id, player]) => player.isBot);
+                for (const [playerId, player] of botPlayers) {
+                    player.role = ROLES.CIVILIAN;
+                    console.log(`🤖 Bot ${player.name} assigned role: ${player.role} (pre-assigned)`);
+                }
+                const humanPlayers = Array.from(room.players.entries()).filter(([id, player]) => !player.isBot);
+                let roleIndex = 0;
+                for (const [playerId, player] of humanPlayers) {
+                    player.role = roles[roleIndex++];
+                    console.log(`👤 Human ${player.name} assigned role: ${player.role}`);
+                    if (player.role === ROLES.MAFIA || player.role === ROLES.SUICIDE_BOMBER || player.role === ROLES.MANIPULATOR) {
+                        mafiaMembers.push({ id: playerId, name: player.name, role: player.role });
+                    }
+                    io.to(playerId).emit('roleAssigned', {
+                        role: player.role,
+                        description: ROLE_DESCRIPTIONS[player.role]
+                    });
+                }
+                if (mafiaMembers.length > 1) {
+                    mafiaMembers.forEach(mafiaPlayer => {
+                        const teammates = mafiaMembers.filter(member => member.id !== mafiaPlayer.id);
+                        io.to(mafiaPlayer.id).emit('mafiaTeamInfo', {
+                            teammates: teammates,
+                            message: `Your mafia teammates: ${teammates.map(t => t.name).join(', ')}`
+                        });
+                    });
+                }
+                room.gameStarted = true;
+                room.gameStartTime = Date.now();
+                const botManager = getBotManager(roomCode);
+                if (botManager) {
+                    const allPlayers = Array.from(room.players.values());
+                    botManager.onGameEvent('gameStarted', { allPlayers });
+                }
             }
             
-            room.gameStarted = true;
-            room.gameStartTime = Date.now(); // Track when game started for statistics
-            
-            // Initialize bot manager for this game
-            const botManager = getBotManager(roomCode);
-            if (botManager) {
-                const allPlayers = Array.from(room.players.values());
-                botManager.onGameEvent('gameStarted', { allPlayers });
-            }
-            
-            // Start night phase after a brief delay to allow role reading
+            // Start initial phase after a brief delay for players to read role
             setTimeout(() => {
-                startNightPhase(roomCode);
-            }, 3000);
-            
-            console.log(`Game started in room ${roomCode}`);
-        }, 2000);
+                const roomNow = rooms.get(roomCode);
+                if (!roomNow) return;
+                if (roomNow.tutorial?.active || roomNow.tutorial?.enabled) {
+                    const step = roomNow.tutorial?.step;
+                    const startAtNight = step === 1 || step === 'mafia' || step === 2 || step === 'doctor' || step === 3 || step === 'detective';
+                    if (startAtNight) startNightPhase(roomCode); else startDayPhase(roomCode);
+                } else {
+                    startNightPhase(roomCode);
+                }
+            }, 1500);
+        }, 1200);
     });
     
     socket.on('updateRoomSettings', (data) => {
@@ -2449,8 +2594,8 @@ io.on('connection', (socket) => {
 
         const player = room.players.get(socket.id);
         
-        // Only mafia members can send mafia chat
-        if (player.role !== ROLES.MAFIA) {
+        // Only mafia members and black police can send mafia chat
+        if (player.role !== ROLES.MAFIA && player.role !== ROLES.BLACK_POLICE && player.role !== ROLES.SUICIDE_BOMBER && player.role !== ROLES.MANIPULATOR) {
             socket.emit('error', 'Only Mafia members can use this chat');
             return;
         }
@@ -2460,9 +2605,9 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Broadcast only to mafia members in the room
+        // Broadcast to mafia-aligned participants (mafia, suicide_bomber, manipulator) and black police observers
         for (const [playerId, roomPlayer] of room.players) {
-            if (roomPlayer.role === ROLES.MAFIA) {
+            if (roomPlayer.role === ROLES.MAFIA || roomPlayer.role === ROLES.SUICIDE_BOMBER || roomPlayer.role === ROLES.MANIPULATOR || roomPlayer.role === ROLES.BLACK_POLICE) {
                 io.to(playerId).emit('mafiaChatMessage', {
                     playerName: playerName,
                     message: message.trim()
@@ -2780,6 +2925,20 @@ io.on('connection', (socket) => {
         } catch (e) {
             console.error('dmMessage error:', e);
         }
+    });
+
+    socket.on('setTutorialStep', (data) => {
+        const { roomCode, step, forceRole } = data || {};
+        const room = rooms.get(roomCode);
+        if (!room) { socket.emit('error', 'Room not found'); return; }
+        if (socket.id !== room.hostId) { socket.emit('error', 'Only host can change tutorial step'); return; }
+        room.tutorial = room.tutorial || { active: false, step: 0, forceRole: null };
+        room.tutorial.active = true;
+        room.tutorial.step = step || room.tutorial.step;
+        // Default role per step if not explicitly provided
+        const stepRoleMap = { 1: ROLES.MAFIA, 2: ROLES.DOCTOR, 3: ROLES.DETECTIVE, 4: ROLES.WHITE_POLICE };
+        room.tutorial.forceRole = forceRole || stepRoleMap[room.tutorial.step] || ROLES.CIVILIAN;
+        socket.emit('tutorialStepSet', { tutorial: room.tutorial });
     });
 });
 

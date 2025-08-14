@@ -125,6 +125,11 @@ class VelmoraGame {
         };
         
         this.init();
+        this.tutorial = {
+            active: false,
+            step: 0,
+            overlay: null
+        };
     }
 
     init() {
@@ -319,6 +324,53 @@ class VelmoraGame {
         document.getElementById('roomCodeInput').addEventListener('input', (e) => {
             e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
         });
+
+        const startTutorialBtn = document.getElementById('startTutorialBtn');
+        if (startTutorialBtn) {
+            startTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal');
+                if (modal) modal.style.display = 'block';
+            });
+        }
+        const closeTutorialModal = document.getElementById('closeTutorialModal');
+        if (closeTutorialModal) {
+            closeTutorialModal.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal');
+                if (modal) modal.style.display = 'none';
+            });
+        }
+        const startCompleteTutorialBtn = document.getElementById('startCompleteTutorialBtn');
+        if (startCompleteTutorialBtn) {
+            startCompleteTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal');
+                if (modal) modal.style.display = 'none';
+                this.startTutorial();
+            });
+        }
+        const startMafiaTutorialBtn = document.getElementById('startMafiaTutorialBtn');
+        if (startMafiaTutorialBtn) {
+            startMafiaTutorialBtn.addEventListener('click', () => this.startRoleTutorial('mafia'));
+        }
+        const startDoctorTutorialBtn = document.getElementById('startDoctorTutorialBtn');
+        if (startDoctorTutorialBtn) {
+            startDoctorTutorialBtn.addEventListener('click', () => this.startRoleTutorial('doctor'));
+        }
+        const startDetectiveTutorialBtn = document.getElementById('startDetectiveTutorialBtn');
+        if (startDetectiveTutorialBtn) {
+            startDetectiveTutorialBtn.addEventListener('click', () => this.startRoleTutorial('detective'));
+        }
+        const startPoliceTutorialBtn = document.getElementById('startPoliceTutorialBtn');
+        if (startPoliceTutorialBtn) {
+            startPoliceTutorialBtn.addEventListener('click', () => this.startRoleTutorial('white_police'));
+        }
+        const startSuicideTutorialBtn = document.getElementById('startSuicideTutorialBtn');
+        if (startSuicideTutorialBtn) {
+            startSuicideTutorialBtn.addEventListener('click', () => this.startRoleTutorial('suicide_bomber'));
+        }
+        const startGrayTutorialBtn = document.getElementById('startGrayTutorialBtn');
+        if (startGrayTutorialBtn) {
+            startGrayTutorialBtn.addEventListener('click', () => this.startGrayPoliceTutorial());
+        }
     }
 
     showCreateRoomForm() {
@@ -481,6 +533,10 @@ class VelmoraGame {
             
             this.showRoomInfo();
             this.showToast(`Lobby created successfully!`);
+            // If tutorial active, go straight into step 1 begin after a brief moment
+            if (this.tutorial?.active && this.tutorial.step === 1) {
+                setTimeout(() => this.beginTutorialStep(1), 500);
+            }
         });
 
         this.socket.on('roomJoined', (data) => {
@@ -585,6 +641,10 @@ class VelmoraGame {
             }
             
             this.handleGameOver(data);
+            // In tutorial mode, advance to next step automatically after a short pause
+            if (this.tutorial?.active) {
+                setTimeout(() => this.nextTutorialStep(), 1200);
+            }
         });
 
         this.socket.on('gameReset', (message) => {
@@ -4033,6 +4093,193 @@ class VelmoraGame {
         // Update immediately and then every second
         updateTimer();
         this.countdownInterval = setInterval(updateTimer, 1000);
+    }
+
+    createTutorialOverlay() {
+        if (this.tutorial.overlay) return this.tutorial.overlay;
+        const overlay = document.createElement('div');
+        overlay.id = 'tutorialOverlay';
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.zIndex = '9999';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        const card = document.createElement('div');
+        card.style.maxWidth = '420px';
+        card.style.margin = '16px';
+        card.style.background = 'rgba(20,20,30,0.95)';
+        card.style.border = '1px solid #4ecdc4';
+        card.style.borderRadius = '12px';
+        card.style.padding = '16px';
+        card.innerHTML = `
+            <h3 style="margin-bottom:8px;color:#4ecdc4;">Tutorial</h3>
+            <div id="tutorialText" style="line-height:1.4;margin-bottom:12px;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                <button id="tutorialPrev" class="btn-secondary">Back</button>
+                <button id="tutorialOk" class="btn-secondary">OK</button>
+                <button id="tutorialNext" class="btn-primary">Next</button>
+            </div>`;
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        this.tutorial.overlay = overlay;
+        return overlay;
+    }
+
+    showTutorial(text, { nextText = 'Next', prevVisible = false, onNext = null, onPrev = null, showOk = true } = {}) {
+        const overlay = this.createTutorialOverlay();
+        overlay.style.display = 'flex';
+        document.getElementById('tutorialText').innerHTML = text;
+        const prev = document.getElementById('tutorialPrev');
+        prev.style.display = prevVisible ? 'inline-block' : 'none';
+        const next = document.getElementById('tutorialNext');
+        next.textContent = nextText;
+        next.onclick = () => onNext && onNext();
+        prev.onclick = () => onPrev && onPrev();
+        const ok = document.getElementById('tutorialOk');
+        if (ok) {
+            ok.style.display = showOk ? 'inline-block' : 'none';
+            ok.onclick = () => this.hideTutorial();
+        }
+    }
+
+    hideTutorial() {
+        if (this.tutorial.overlay) this.tutorial.overlay.style.display = 'none';
+    }
+
+    async startTutorial() {
+        this.tutorial.active = true;
+        this.tutorial.step = 1;
+        // Create a private room with bots enabled and small size
+        const name = window.authManager?.getDisplayName?.() || 'You';
+        const lobbyInfo = {
+            lobbyName: 'Tutorial',
+            lobbyDescription: 'Learn the roles with bots',
+            isPublic: false,
+            maxPlayers: 5,
+            mafiaCount: 1,
+            enableBots: true,
+            botCount: 4,
+            tutorial: { active: true, step: 1 }
+        };
+        this.socket.emit('createRoom', { playerName: name, lobbyInfo });
+        this.showTutorial('Step 1: Mafia — eliminate civilians at night and blend in during the day. You will play as Mafia in this round. Press Next to begin.', {
+            nextText: 'Start as Mafia',
+            onNext: () => this.beginTutorialStep(1)
+        });
+    }
+
+    beginTutorialStep(step) {
+        if (!this.currentRoomCode) return;
+        const forceRole = step === 1 ? 'mafia' : step === 2 ? 'doctor' : step === 3 ? 'detective' : 'white_police';
+        this.socket.emit('setTutorialStep', { roomCode: this.currentRoomCode, step, forceRole });
+        // Auto-start game
+        this.socket.emit('startGame', this.currentRoomCode);
+        // Guide text for each step
+        const guide = step === 1
+            ? 'As Mafia, you will see your role. During night, choose a target. During day, discuss and avoid suspicion.'
+            : step === 2
+            ? 'As Doctor, you can protect a player at night. Save yourself or an ally to block a kill.'
+            : step === 3
+            ? 'As Detective, investigate one player at night to learn their alignment.'
+            : 'As Police, coordinate with town roles and help maintain order.';
+        this.showTutorial(guide, { prevVisible: step > 1, nextText: 'Skip to End', onNext: () => this.finishTutorial(), onPrev: () => this.prevTutorialStep() });
+    }
+
+    nextTutorialStep() {
+        if (this.tutorial.step < 4) {
+            this.tutorial.step += 1;
+            this.socket.emit('returnToLobby', this.currentRoomCode);
+            setTimeout(() => this.beginTutorialStep(this.tutorial.step), 500);
+        } else {
+            this.finishTutorial();
+        }
+    }
+
+    prevTutorialStep() {
+        if (this.tutorial.step > 1) {
+            this.tutorial.step -= 1;
+            this.socket.emit('returnToLobby', this.currentRoomCode);
+            setTimeout(() => this.beginTutorialStep(this.tutorial.step), 500);
+        }
+    }
+
+    finishTutorial() {
+        this.hideTutorial();
+        this.showToast('Tutorial complete! You are ready to play.', 'success');
+        this.tutorial.active = false;
+        // Return to main menu or lobby
+        if (this.currentRoomCode) this.socket.emit('returnToLobby', this.currentRoomCode);
+    }
+
+    startRoleTutorial(role) {
+        const modal = document.getElementById('tutorialModal');
+        if (modal) modal.style.display = 'none';
+        this.tutorial.active = true;
+        this.tutorial.step = ['mafia','doctor','detective','white_police','suicide_bomber'].indexOf(role) + 1 || 1;
+        const name = window.authManager?.getDisplayName?.() || 'You';
+        const lobbyInfo = {
+            lobbyName: `Tutorial: ${role}`,
+            lobbyDescription: 'Role-focused tutorial with bots',
+            isPublic: false,
+            maxPlayers: 5,
+            mafiaCount: 3,
+            enableBots: true,
+            botCount: 4,
+            tutorial: { active: true, step: role }
+        };
+        this.socket.emit('createRoom', { playerName: name, lobbyInfo });
+        const labelMap = { mafia: 'Mafia', doctor: 'Doctor', detective: 'Detective', white_police: 'Police', suicide_bomber: 'Suicide Bomber' };
+        const label = labelMap[role] || 'Role';
+        this.showTutorial(`You chose the ${label} tutorial. Press Start to begin.`, {
+            nextText: 'Start',
+            onNext: () => this.beginTutorialStep(this.tutorial.step)
+        });
+    }
+
+    startGrayPoliceTutorial() {
+        const modal = document.getElementById('tutorialModal');
+        if (modal) modal.style.display = 'none';
+        this.tutorial.active = true;
+        this.tutorial.step = 'gray_police';
+        const name = window.authManager?.getDisplayName?.() || 'You';
+        const lobbyInfo = {
+            lobbyName: 'Tutorial: Gray Police',
+            lobbyDescription: 'Choose your allegiance at game start',
+            isPublic: false,
+            maxPlayers: 6,
+            mafiaCount: 2,
+            enableBots: true,
+            botCount: 5,
+            tutorial: { active: true, step: 'gray_police' }
+        };
+        this.socket.emit('createRoom', { playerName: name, lobbyInfo });
+        this.showTutorial('Gray Police: At game start, choose whom to support. Select Black to secretly join Mafia (you can see and talk in mafia chat). Select White to join the town.', {
+            nextText: 'Choose...',
+            showOk: false,
+            onNext: () => this.promptGrayAlignment()
+        });
+    }
+
+    promptGrayAlignment() {
+        const overlay = this.createTutorialOverlay();
+        const container = document.getElementById('tutorialText');
+        container.innerHTML = 'Choose your allegiance:<br><br><button id="chooseBlack" class="btn-secondary">Support Black (Mafia)</button> <button id="chooseWhite" class="btn-secondary">Support White (Town)</button>';
+        const prev = document.getElementById('tutorialPrev'); if (prev) prev.style.display = 'none';
+        const next = document.getElementById('tutorialNext'); if (next) next.style.display = 'none';
+        const ok = document.getElementById('tutorialOk'); if (ok) ok.style.display = 'none';
+        document.getElementById('chooseBlack').onclick = () => this.beginGrayAlignment('black');
+        document.getElementById('chooseWhite').onclick = () => this.beginGrayAlignment('white');
+    }
+
+    beginGrayAlignment(choice) {
+        if (!this.currentRoomCode) return;
+        // Map choice to role override for server
+        const role = choice === 'black' ? 'black_police' : 'white_police';
+        this.socket.emit('setTutorialStep', { roomCode: this.currentRoomCode, step: role, forceRole: role });
+        this.hideTutorial();
+        this.socket.emit('startGame', this.currentRoomCode);
     }
 }
 

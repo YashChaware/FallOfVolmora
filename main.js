@@ -4166,7 +4166,7 @@ class VelmoraGame {
         overlay.style.alignItems = 'center';
         overlay.style.justifyContent = 'center';
         const card = document.createElement('div');
-        card.style.maxWidth = '420px';
+        card.style.maxWidth = '600px';
         card.style.margin = '16px';
         card.style.background = 'rgba(20,20,30,0.95)';
         card.style.border = '1px solid #4ecdc4';
@@ -4308,12 +4308,10 @@ class VelmoraGame {
     startSandboxTutorial(role, onFinish = null) {
         this.tutorial.active = true;
         this.tutorial.step = role;
-        const mafiaTarget = role === 'detective' ? 'mafia' : 'civilian';
-        const policeRole = role === 'white_police' ? 'white_police' : role === 'black_police' ? 'black_police' : role;
         this.sandbox = {
-            role: policeRole,
+            role,
             players: [
-                { id: 'you', name: 'You', role: policeRole, alive: true },
+                { id: 'you', name: 'You', role: role, alive: true },
                 { id: 'bot1', name: 'AI Alpha', role: 'civilian', alive: true },
                 { id: 'bot2', name: 'AI Beta', role: role === 'detective' || role === 'black_police' || role === 'manipulator' || role === 'suicide_bomber' ? 'mafia' : 'civilian', alive: true },
                 { id: 'bot3', name: 'AI Gamma', role: 'civilian', alive: true }
@@ -4321,13 +4319,11 @@ class VelmoraGame {
             stage: 0,
             onFinish
         };
-        // Hide any lobby UI remnants before starting overlay-only tutorial
-        const lobby = document.getElementById('lobbyScreen'); if (lobby) lobby.style.display = 'none';
-        const roomInfo = document.getElementById('roomInfo'); if (roomInfo) roomInfo.style.display = 'none';
-        const roomSelection = document.getElementById('roomSelection'); if (roomSelection) roomSelection.style.display = 'none';
-        const gameOver = document.getElementById('gameOverScreen'); if (gameOver) gameOver.style.display = 'none';
-        const gameScr = document.getElementById('gameScreen'); if (gameScr) gameScr.style.display = 'block';
-        this.currentScreen = 'game';
+        // Do NOT open game window; keep user on main menu and show overlay only
+        document.getElementById('lobbyScreen').style.display = 'block';
+        document.getElementById('gameScreen').style.display = 'none';
+        document.getElementById('gameOverScreen').style.display = 'none';
+        this.currentScreen = 'lobby';
         this.showSandboxIntro();
     }
 
@@ -4444,11 +4440,10 @@ class VelmoraGame {
 
     finishSandbox() {
         this.hideTutorial();
-        if (typeof this.sandbox.onFinish === 'function') {
-            const cb = this.sandbox.onFinish; this.sandbox.onFinish = null; cb();
-            return;
+        // Stop here for tutorials: do not navigate or sequence unless explicitly running a sequence
+        if (this.tutorial.sequence && this.tutorial.sequence.length > 0) {
+            this._advanceSandboxSequence();
         }
-        this.finishTutorial();
     }
 
 	startSandboxSequence(sequence) {

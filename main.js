@@ -4408,7 +4408,7 @@ class VelmoraGame {
         } else if (role === 'manipulator') {
             this.showTutorial(`You redirected the vote to ${target?.name || 'someone'}. In real games, this affects tallying.`, { nextText: 'OK', onNext: () => this.finishSandbox() });
         } else if (role === 'civilian') {
-            this.showTutorial(`You voted ${target?.name || 'someone'}. In real games, majority decides and discussion matters.`, { nextText: 'OK', onNext: () => this.finishSandbox() });
+            this.showTutorial(`You voted ${target?.name || 'someone'}. In real games, majority decides and discussion matters.`, { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
         }
     }
 

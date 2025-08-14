@@ -489,15 +489,53 @@ class AuthManager {
 
     async showFriendsModal() {
         try {
+            // Fetch fresh friends
             const response = await fetch('/api/friends');
             if (response.ok) {
                 const data = await response.json();
                 this.friends = data.friends;
                 this.friendRequests = data.friendRequests;
                 this.updateFriendsModal();
-                // Show own friend code if available
+                // Show own friend code
                 if (this.currentUser && this.currentUser.friend_code) {
                     document.getElementById('yourFriendCode').textContent = `Your Friend Code: ${this.currentUser.friend_code}`;
+                    const copyBtn = document.getElementById('copyMyFriendCodeBtn');
+                    if (copyBtn) {
+                        copyBtn.onclick = async () => {
+                            try { await navigator.clipboard.writeText(this.currentUser.friend_code); this.showNotification('Friend Code copied', 'success'); } catch {}
+                        };
+                    }
+                }
+                // Wire search
+                const searchInput = document.getElementById('friendSearchInput');
+                const resultsBox = document.getElementById('friendSearchResults');
+                if (searchInput && resultsBox) {
+                    let t = null;
+                    searchInput.oninput = () => {
+                        clearTimeout(t);
+                        const q = searchInput.value.trim();
+                        if (!q) { resultsBox.style.display = 'none'; resultsBox.innerHTML=''; return; }
+                        t = setTimeout(async () => {
+                            try {
+                                const res = await fetch('/api/users/search?q=' + encodeURIComponent(q));
+                                if (!res.ok) return;
+                                const users = await res.json();
+                                resultsBox.innerHTML = users.map(u => `<div class=\"search-item\" style=\"padding:6px; cursor:pointer;\" data-id=\"${u.id}\">${u.display_name}</div>`).join('') || '<div style="padding:6px;">No users found</div>';
+                                resultsBox.style.display = 'block';
+                                resultsBox.querySelectorAll('.search-item').forEach(el => {
+                                    el.onclick = () => {
+                                        const id = el.getAttribute('data-id');
+                                        // Send friend request by id via profile endpoint
+                                        fetch('/api/profile/' + id + '/friend-request', { method: 'POST' }).then(async r => {
+                                            if (r.ok) this.showNotification('Friend request sent', 'success');
+                                            else { const d = await r.json(); this.showNotification(d.error || 'Failed to send request', 'error'); }
+                                        });
+                                        resultsBox.style.display = 'none';
+                                    };
+                                });
+                            } catch {}
+                        }, 300);
+                    };
                 }
                 document.getElementById('friendsModal').style.display = 'flex';
             } else {
@@ -994,43 +1032,8 @@ class AuthManager {
 			this.showNotification('Failed to send', 'error');
 		}
 	}
-
-	openForgotPasswordModal() {
-		const email = prompt('Enter your account email to receive reset link:');
-		if (!email) return;
-		fetch('/api/auth/forgot-password', {
-			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
-		}).then(r => r.json()).then(data => {
-			this.showNotification('If the email exists, a reset link has been generated.', 'info');
-			if (data.resetLink) {
-				// For dev, show the link
-				console.log('Reset link:', data.resetLink);
-			}
-		}).catch(() => this.showNotification('Failed to send reset request', 'error'));
-	}
-
-	openResetPasswordModal(token) {
-		const newPassword = prompt('Enter a new password (min 6 chars):');
-		if (!newPassword || newPassword.length < 6) {
-			this.showNotification('Password too short', 'error');
-			return;
-		}
-		fetch('/api/auth/reset-password', {
-			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password: newPassword })
-		}).then(async (r) => {
-			if (r.ok) {
-				this.showNotification('Password reset successful. Please log in.', 'success');
-				this.switchToLoginForm();
-				// Clear URL params
-				history.replaceState({}, document.title, window.location.pathname);
-			} else {
-				const d = await r.json();
-				this.showNotification(d.error || 'Reset failed', 'error');
-			}
-		}).catch(() => this.showNotification('Reset failed', 'error'));
-	}
 }
 
 // Initialize the auth manager
 const authManager = new AuthManager();
-window.authManager = authManager; 
+window.authManager = authManager;

@@ -396,10 +396,14 @@ app.get('/api/game-history', async (req, res) => {
 app.get('/api/lobbies/public', (req, res) => {
     try {
         const search = req.query.search?.toLowerCase() || '';
-        const lobbies = Array.from(publicLobbies.values())
+        const sort = (req.query.sort || 'new').toString(); // new|players_desc|players_asc
+        const hideStarted = req.query.hideStarted === 'true';
+        let lobbies = Array.from(publicLobbies.values())
             .filter(lobby => {
-                return lobby.lobbyName.toLowerCase().includes(search) ||
-                       lobby.lobbyDescription.toLowerCase().includes(search);
+                const matches = lobby.lobbyName.toLowerCase().includes(search) ||
+                                lobby.lobbyDescription.toLowerCase().includes(search);
+                const startedOk = hideStarted ? !lobby.gameStarted : true;
+                return matches && startedOk;
             })
             .map(lobby => ({
                 roomCode: lobby.roomCode,
@@ -412,9 +416,10 @@ app.get('/api/lobbies/public', (req, res) => {
                 gameStarted: lobby.gameStarted,
                 createdAt: lobby.createdAt,
                 mafiaCount: lobby.mafiaCount
-            }))
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        
+            }));
+        if (sort === 'players_desc') lobbies.sort((a,b) => b.playerCount - a.playerCount);
+        else if (sort === 'players_asc') lobbies.sort((a,b) => a.playerCount - b.playerCount);
+        else lobbies.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
         res.json(lobbies);
     } catch (error) {
         console.error('Public lobbies error:', error);
@@ -524,8 +529,16 @@ function createRoom(roomCode, hostId, lobbyInfo = null) {
             autoPoliceRoles: lobbyInfo?.autoPoliceRoles !== false,
             // Bot settings
             enableBots: lobbyInfo?.enableBots || false,
-            botCount: lobbyInfo?.botCount || 1
+            botCount: lobbyInfo?.botCount || 1,
+            // Host controls
+            isLocked: lobbyInfo?.isLocked || false,
+            inviteQuota: lobbyInfo?.inviteQuota || 20
         },
+        // Host-managed whitelist (user IDs allowed when locked)
+        whitelist: new Set(),
+        // Invite quota window
+        inviteWindowStart: Date.now(),
+        invitesSentInWindow: 0,
         // Win tracking
         winStats: {
             mafiaWins: 0,
@@ -1732,6 +1745,13 @@ io.on('connection', (socket) => {
             socket.emit('error', 'Room not found');
             return;
         }
+        // Enforce lock/whitelist
+        if (room.settings.isLocked) {
+            if (!userId || !room.whitelist.has(userId)) {
+                socket.emit('error', 'Room is locked');
+                return;
+            }
+        }
         
         if (room.players.size >= room.settings.maxPlayers) {
             socket.emit('error', 'Room is full');
@@ -1936,7 +1956,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('updateRoomSettings', (data) => {
-        const { roomCode, maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles, enableBots, botCount } = data;
+        const { roomCode, maxPlayers, mafiaCount, suicideBomberEnabled, manipulatorEnabled, autoPoliceRoles, enableBots, botCount, isLocked, inviteQuota } = data;
         const room = rooms.get(roomCode);
         
         if (!room) {
@@ -1986,6 +2006,11 @@ io.on('connection', (socket) => {
         room.settings.autoPoliceRoles = autoPoliceRoles !== undefined ? autoPoliceRoles : room.settings.autoPoliceRoles;
         room.settings.enableBots = enableBots !== undefined ? enableBots : room.settings.enableBots;
         room.settings.botCount = botCount !== undefined ? botCount : room.settings.botCount;
+        room.settings.isLocked = isLocked !== undefined ? !!isLocked : room.settings.isLocked;
+        if (inviteQuota !== undefined) {
+            const q = Math.max(0, Math.min(parseInt(inviteQuota), 200));
+            room.settings.inviteQuota = isNaN(q) ? room.settings.inviteQuota : q;
+        }
         
         // Handle bot settings changes
         if (enableBots !== undefined || botCount !== undefined) {
@@ -2006,19 +2031,32 @@ io.on('connection', (socket) => {
         
         // Broadcast updated settings to all players in room
         io.to(roomCode).emit('roomSettingsUpdated', {
-            maxPlayers: maxPlayers,
-            mafiaCount: mafiaCount,
+            maxPlayers: room.settings.maxPlayers,
+            mafiaCount: room.settings.mafiaCount,
             suicideBomberEnabled: room.settings.suicideBomberEnabled,
             manipulatorEnabled: room.settings.manipulatorEnabled,
             autoPoliceRoles: room.settings.autoPoliceRoles,
             enableBots: room.settings.enableBots,
-            botCount: room.settings.botCount
+            botCount: room.settings.botCount,
+            isLocked: room.settings.isLocked,
+            inviteQuota: room.settings.inviteQuota
         });
         
         broadcastGameStateToRoom(roomCode);
-        console.log(`Room ${roomCode} settings updated: ${maxPlayers} max players, ${mafiaCount} mafia, bots: ${room.settings.enableBots}`);
+        console.log(`Room ${roomCode} settings updated: locked=${room.settings.isLocked}, invites quota=${room.settings.inviteQuota}`);
     });
-    
+
+    socket.on('updateWhitelist', (data) => {
+        const { roomCode, action, userId } = data;
+        const room = rooms.get(roomCode);
+        if (!room) { socket.emit('error', 'Room not found'); return; }
+        if (socket.id !== room.hostId) { socket.emit('error', 'Only host can modify whitelist'); return; }
+        if (action === 'add' && userId) room.whitelist.add(userId);
+        if (action === 'remove' && userId) room.whitelist.delete(userId);
+        // Acknowledge
+        socket.emit('whitelistUpdated', { whitelist: Array.from(room.whitelist) });
+    });
+
     socket.on('vote', (data) => {
         const { roomCode, targetPlayerId } = data;
         const room = rooms.get(roomCode);
@@ -2862,5 +2900,17 @@ app.post('/api/auth/reset-password', async (req, res) => {
 	} catch (e) {
 		console.error('Reset password error:', e);
 		res.status(500).json({ error: 'Reset failed' });
+	}
+});
+
+// User search for friend suggestions
+app.get('/api/users/search', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const q = (req.query.q || '').toString();
+		const results = await db.searchUsers(q, req.session.userId, 10);
+		res.json(results);
+	} catch (e) {
+		res.status(500).json({ error: 'Search failed' });
 	}
 });

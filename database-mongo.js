@@ -448,6 +448,25 @@ class VelmoraDatabase {
 		});
 	}
 
+	async searchUsers(queryText, currentUserId, limit = 10) {
+		await this.ensureReady();
+		const q = (queryText || '').trim();
+		if (!q) return [];
+		const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+		const users = await this.User.find({
+			$and: [
+				{ _id: { $ne: currentUserId } },
+				{ $or: [ { display_name: rx }, { username: rx } ] }
+			]
+		}).limit(Math.min(limit, 20)).lean();
+		return users.map(u => ({
+			id: u._id.toString(),
+			display_name: u.display_name,
+			avatar_url: u.avatar_url || null,
+			friend_requests_enabled: u.friend_requests_enabled !== false
+		}));
+	}
+
 	async close() {
 		await mongoose.connection.close();
 	}

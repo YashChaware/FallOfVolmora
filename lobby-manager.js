@@ -94,6 +94,30 @@ class LobbyManager {
 				if (window.authManager) window.authManager.openInviteFriendsModal();
 			});
 		}
+
+		// Public lobbies filters
+		const publicTab = document.getElementById('publicLobbiesContent');
+		if (publicTab) {
+			let toolbar = document.getElementById('lobbyFiltersToolbar');
+			if (!toolbar) {
+				toolbar = document.createElement('div');
+				toolbar.id = 'lobbyFiltersToolbar';
+				toolbar.style.display = 'flex';
+				toolbar.style.gap = '8px';
+				toolbar.style.flexWrap = 'wrap';
+				publicTab.insertBefore(toolbar, publicTab.firstChild);
+				toolbar.innerHTML = `
+					<select id="lobbySort">
+						<option value="new">Newest</option>
+						<option value="players_desc">Players (High→Low)</option>
+						<option value="players_asc">Players (Low→High)</option>
+					</select>
+					<label><input type="checkbox" id="hideStartedChk"> Hide in-game</label>
+				`;
+				document.getElementById('lobbySort').onchange = () => this.refreshPublicLobbies();
+				document.getElementById('hideStartedChk').onchange = () => this.refreshPublicLobbies();
+			}
+		}
     }
 
     setupSettingsListeners() {
@@ -371,7 +395,10 @@ class LobbyManager {
     async refreshPublicLobbies() {
         try {
             const search = document.getElementById('lobbySearch').value.trim();
-            const response = await fetch(`/api/lobbies/public?search=${encodeURIComponent(search)}`);
+            const sortSel = document.getElementById('lobbySort');
+            const sort = sortSel ? sortSel.value : 'new';
+            const hideStarted = document.getElementById('hideStartedChk')?.checked ? 'true' : 'false';
+            const response = await fetch(`/api/lobbies/public?search=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}&hideStarted=${hideStarted}`);
             
             if (response.ok) {
                 this.publicLobbies = await response.json();
@@ -626,6 +653,50 @@ class LobbyManager {
             this.showNotification(link, 'info');
         }
     }
+
+    updateRoomSettingsDisplay() {
+		// Add host controls (lock, invite quota)
+		const roomSettingsSection = document.getElementById('roomSettingsSection');
+		if (roomSettingsSection && !document.getElementById('hostControlsRow')) {
+			const wrap = document.createElement('div');
+			wrap.id = 'hostControlsRow';
+			wrap.innerHTML = `
+				<div style="margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+					<label><input type="checkbox" id="lockRoomToggle"> Lock Room</label>
+					<label>Invite quota/10min <input type="number" id="inviteQuotaInput" min="0" max="200" value="20" style="width:80px;"></label>
+					<button id="applyHostControlsBtn" class="secondary-btn">Apply</button>
+				</div>
+				<div id="whitelistControls" style="margin-top:8px;">
+					<h5>Whitelist (when locked)</h5>
+					<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+						<input type="text" id="whitelistUserIdInput" placeholder="Friend UserId">
+						<button id="addToWhitelistBtn" class="secondary-btn">Add</button>
+					</div>
+				</div>
+			`;
+			roomSettingsSection.appendChild(wrap);
+			// Initialize values
+			const gs = window.game?.gameState;
+			document.getElementById('lockRoomToggle').checked = !!gs?.settings?.isLocked;
+			const quota = gs?.settings?.inviteQuota ?? 20;
+			document.getElementById('inviteQuotaInput').value = quota;
+			// Apply
+			document.getElementById('applyHostControlsBtn').onclick = () => {
+				if (!window.game || !window.game.currentRoomCode) return;
+				const isLocked = !!document.getElementById('lockRoomToggle').checked;
+				const inviteQuota = parseInt(document.getElementById('inviteQuotaInput').value) || 0;
+				window.game.socket.emit('updateRoomSettings', { roomCode: window.game.currentRoomCode, isLocked, inviteQuota });
+			};
+			document.getElementById('addToWhitelistBtn').onclick = () => {
+				if (!window.game || !window.game.currentRoomCode) return;
+				const userId = document.getElementById('whitelistUserIdInput').value.trim();
+				if (!userId) return;
+				window.game.socket.emit('updateWhitelist', { roomCode: window.game.currentRoomCode, action: 'add', userId });
+				this.showNotification('User added to whitelist', 'success');
+				document.getElementById('whitelistUserIdInput').value = '';
+			};
+		}
+	}
 
     // Handle deep link on load
     maybeHandleDeepLink() {

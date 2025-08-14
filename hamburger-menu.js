@@ -87,6 +87,27 @@ class HamburgerMenu {
                 this.close();
             });
         }
+        // Delete account
+        const deleteAccountBtn = document.getElementById('deleteAccountDropdownBtn');
+        if (deleteAccountBtn) {
+            deleteAccountBtn.addEventListener('click', async () => {
+                const confirmText = prompt("Type DELETE to permanently remove your account. This cannot be undone.");
+                if (confirmText !== 'DELETE') return;
+                try {
+                    const res = await fetch('/api/account', { method: 'DELETE' });
+                    if (res.ok) {
+                        this.showNotification('Account deleted', 'success');
+                        window.location.reload();
+                    } else {
+                        const data = await res.json();
+                        this.showNotification(data.error || 'Failed to delete account', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('Failed to delete account', 'error');
+                }
+                this.close();
+            });
+        }
     }
 
     toggle() {
@@ -126,6 +147,7 @@ class HamburgerMenu {
         const loginItem = document.getElementById('loginDropdownBtn');
         const registerItem = document.getElementById('registerDropdownBtn');
         const logoutInAuth = document.getElementById('logoutInAuthDropdownBtn');
+        const deleteAccountBtn = document.getElementById('deleteAccountDropdownBtn');
 
         if (isAuthenticated) {
             // Show user info; hide standalone logout section
@@ -135,6 +157,7 @@ class HamburgerMenu {
             if (loginItem) loginItem.style.display = 'none';
             if (registerItem) registerItem.style.display = 'none';
             if (logoutInAuth) logoutInAuth.style.display = 'block';
+            if (deleteAccountBtn) deleteAccountBtn.style.display = 'block';
             
             // Update username display
             const user = window.authManager.currentUser;
@@ -149,6 +172,7 @@ class HamburgerMenu {
             if (loginItem) loginItem.style.display = 'block';
             if (registerItem) registerItem.style.display = 'block';
             if (logoutInAuth) logoutInAuth.style.display = 'none';
+            if (deleteAccountBtn) deleteAccountBtn.style.display = 'none';
         }
     }
 

@@ -2735,3 +2735,21 @@ app.post('/api/profile/:otherUserId/friend-request', async (req, res) => {
 		res.status(400).json({ error: error.message });
 	}
 });
+
+app.delete('/api/account', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const userId = req.session.userId;
+		// Remove user, friends where user is either side, DMs
+		await Promise.all([
+			db.User.findByIdAndDelete(userId),
+			db.Friend.deleteMany({ $or: [{ user_id: userId }, { friend_id: userId }] }),
+			db.DirectMessage.deleteMany({ $or: [{ from_user_id: userId }, { to_user_id: userId }] })
+		]);
+		// Destroy session
+		req.session.destroy(() => res.json({ success: true }));
+	} catch (e) {
+		console.error('Delete account error:', e);
+		res.status(500).json({ error: 'Failed to delete account' });
+	}
+});

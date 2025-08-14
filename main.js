@@ -4336,6 +4336,13 @@ class VelmoraGame {
             stage: 0,
             onFinish
         };
+        // Hide any lobby UI remnants before starting overlay-only tutorial
+        const lobby = document.getElementById('lobbyScreen'); if (lobby) lobby.style.display = 'none';
+        const roomInfo = document.getElementById('roomInfo'); if (roomInfo) roomInfo.style.display = 'none';
+        const roomSelection = document.getElementById('roomSelection'); if (roomSelection) roomSelection.style.display = 'none';
+        const gameOver = document.getElementById('gameOverScreen'); if (gameOver) gameOver.style.display = 'none';
+        const gameScr = document.getElementById('gameScreen'); if (gameScr) gameScr.style.display = 'block';
+        this.currentScreen = 'game';
         this.showSandboxIntro();
     }
 
@@ -4405,7 +4412,7 @@ class VelmoraGame {
         const target = players.find(p => p.id === targetId);
         if (role === 'mafia') {
             if (stage === 0) {
-                this.showTutorial(`You attempted to eliminate ${target.name}, but they were protected by the Doctor. No one died tonight.`, { nextText: 'Continue', onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); }});
+                this.showTutorial(`You attempted to eliminate ${target.name}, but they were protected by the Doctor. No one died tonight.`, { nextText: 'Continue', showOk: false, onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); }});
             } else {
                 if (target && target.alive) target.alive = false;
                 this.showTutorial(`${target?.name || 'Target'} was eliminated.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
@@ -4424,9 +4431,9 @@ class VelmoraGame {
             this.showTutorial(`You signaled your mafia ally (AI Beta). In real games, you can see mafia info and coordinate covertly.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
         } else if (role === 'suicide_bomber') {
             if (targetId === 'trigger') {
-                this.sandbox.stage = 1; this.renderSandbox();
+                this.showTutorial('You triggered your final act. You die. The Doctor protected your target, so they survive.', { nextText: 'Continue', showOk: false, onNext: () => { this.showTutorial('That is how Doctor protection interacts with Suicide Bomber. ', { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() }); } });
             } else {
-                this.showTutorial(`You took ${target?.name || 'someone'} down with you. Doctor protection can still prevent their death.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+                this.showTutorial(`You took ${target?.name || 'someone'} down with you.`, { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
             }
         } else if (role === 'manipulator') {
             this.showTutorial(`You redirected the vote to ${target?.name || 'someone'}. In real games, this affects tallying.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
@@ -4449,4 +4456,4 @@ class VelmoraGame {
 document.addEventListener('DOMContentLoaded', () => {
     window.game = new VelmoraGame();
     // Game will start with lobby screen, comic intro will play when game starts
-}); 
+});

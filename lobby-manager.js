@@ -632,13 +632,18 @@ class LobbyManager {
         const params = new URLSearchParams(window.location.search);
         const action = params.get('action');
         const room = params.get('room');
+        const token = params.get('token');
         if (action === 'join' && room) {
             // If authenticated, auto-join; else prompt name and join
             document.getElementById('privateLobbyCode').value = room.toUpperCase();
             this.joinPrivateLobby();
             // Clear params to avoid re-trigger
             history.replaceState({}, document.title, window.location.pathname);
-        }
+		}
+		if (action === 'reset' && token && window.authManager) {
+			window.authManager.openResetPasswordModal(token);
+			// do not clear token immediately so user can retry
+		}
     }
 }
 

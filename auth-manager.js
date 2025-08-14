@@ -119,6 +119,19 @@ class AuthManager {
     showLoginModal() {
         document.getElementById('authModal').style.display = 'flex';
         this.switchToLoginForm();
+        // Adjust placeholder
+        const userInput = document.getElementById('loginUsername');
+        if (userInput) userInput.placeholder = 'Username or Email';
+        // Add Forgot Password link if not present
+        let forgot = document.getElementById('forgotPasswordLink');
+        if (!forgot) {
+            forgot = document.createElement('div');
+            forgot.id = 'forgotPasswordLink';
+            forgot.style.marginTop = '8px';
+            forgot.innerHTML = '<a href="#" id="forgotPasswordBtn">Forgot password?</a>';
+            document.getElementById('loginFormElement').appendChild(forgot);
+            document.getElementById('forgotPasswordBtn').onclick = (e) => { e.preventDefault(); this.openForgotPasswordModal(); };
+        }
     }
 
     showRegisterModal() {
@@ -941,6 +954,41 @@ class AuthManager {
 		} catch (e) {
 			this.showNotification('Failed to send', 'error');
 		}
+	}
+
+	openForgotPasswordModal() {
+		const email = prompt('Enter your account email to receive reset link:');
+		if (!email) return;
+		fetch('/api/auth/forgot-password', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+		}).then(r => r.json()).then(data => {
+			this.showNotification('If the email exists, a reset link has been generated.', 'info');
+			if (data.resetLink) {
+				// For dev, show the link
+				console.log('Reset link:', data.resetLink);
+			}
+		}).catch(() => this.showNotification('Failed to send reset request', 'error'));
+	}
+
+	openResetPasswordModal(token) {
+		const newPassword = prompt('Enter a new password (min 6 chars):');
+		if (!newPassword || newPassword.length < 6) {
+			this.showNotification('Password too short', 'error');
+			return;
+		}
+		fetch('/api/auth/reset-password', {
+			method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password: newPassword })
+		}).then(async (r) => {
+			if (r.ok) {
+				this.showNotification('Password reset successful. Please log in.', 'success');
+				this.switchToLoginForm();
+				// Clear URL params
+				history.replaceState({}, document.title, window.location.pathname);
+			} else {
+				const d = await r.json();
+				this.showNotification(d.error || 'Reset failed', 'error');
+			}
+		}).catch(() => this.showNotification('Reset failed', 'error'));
 	}
 }
 

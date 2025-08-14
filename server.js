@@ -10,6 +10,7 @@ const Database = require('./database-mongo');
 const BotManager = require('./bot-manager');
 const fs = require('fs');
 const multer = require('multer');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -151,44 +152,45 @@ app.post('/api/register', authLimiter, async (req, res) => {
 });
 
 app.post('/api/login', authLimiter, async (req, res) => {
-    try {
-        const { username, password } = req.body;
+	try {
+		const { username, password } = req.body;
+		const identifier = username; // can be username or email
 
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password are required' });
-        }
+		if (!identifier || !password) {
+			return res.status(400).json({ error: 'Username/Email and password are required' });
+		}
 
-        const user = await db.validateUser(username, password);
-        if (!user) {
-            return res.status(401).json({ error: 'Invalid username or password' });
-        }
+		const user = await db.validateUser(identifier, password);
+		if (!user) {
+			return res.status(401).json({ error: 'Invalid credentials' });
+		}
 
-        req.session.userId = user.id;
-        req.session.username = user.username;
+		req.session.userId = user.id;
+		req.session.username = user.username;
 
-        // Fetch full profile for friend code
-        const fullUser = await db.getUserById(user.id);
+		// Fetch full profile for friend code
+		const fullUser = await db.getUserById(user.id);
 
-        res.json({
-            success: true,
-            user: {
-                id: user.id,
-                username: user.username,
-                displayName: user.displayName,
-                email: user.email,
-                totalGames: user.totalGames,
-                totalWins: user.totalWins,
-                mafiaWins: user.mafiaWins,
-                civilianWins: user.civilianWins,
-                favoriteRole: user.favoriteRole,
-                avatarUrl: user.avatarUrl || fullUser?.avatar_url || null,
-                friendCode: fullUser?.friend_code || null
-            }
-        });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
-    }
+		res.json({
+			success: true,
+			user: {
+				id: user.id,
+				username: user.username,
+				displayName: user.displayName,
+				email: user.email,
+				totalGames: user.totalGames,
+				totalWins: user.totalWins,
+				mafiaWins: user.mafiaWins,
+				civilianWins: user.civilianWins,
+				favoriteRole: user.favoriteRole,
+				avatarUrl: user.avatarUrl || fullUser?.avatar_url || null,
+				friendCode: fullUser?.friend_code || null
+			}
+		});
+	} catch (error) {
+		console.error('Login error:', error);
+		res.status(500).json({ error: 'Login failed' });
+	}
 });
 
 app.post('/api/logout', (req, res) => {
@@ -2751,5 +2753,48 @@ app.delete('/api/account', async (req, res) => {
 	} catch (e) {
 		console.error('Delete account error:', e);
 		res.status(500).json({ error: 'Failed to delete account' });
+	}
+});
+
+// Forgot password: create reset token (to be delivered via your channel)
+app.post('/api/auth/forgot-password', async (req, res) => {
+	try {
+		const { email } = req.body;
+		if (!email) return res.status(400).json({ error: 'Email is required' });
+		const user = await db.getUserByEmail(email);
+		if (!user) return res.json({ success: true }); // do not reveal user existence
+		// Create token
+		const token = crypto.randomBytes(24).toString('hex');
+		const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+		await db.User.findByIdAndUpdate(user.id, { reset_token: token, reset_expires: expires });
+		// Return reset link for now (in production, email it)
+		const baseUrl = req.headers.origin || `${req.protocol}://${req.get('host')}`;
+		const link = `${baseUrl}/?action=reset&token=${token}`;
+		res.json({ success: true, resetLink: link });
+	} catch (e) {
+		console.error('Forgot password error:', e);
+		res.status(500).json({ error: 'Request failed' });
+	}
+});
+
+// Reset password: verify token and set new password
+app.post('/api/auth/reset-password', async (req, res) => {
+	try {
+		const { token, password } = req.body;
+		if (!token || !password || password.length < 6) {
+			return res.status(400).json({ error: 'Invalid request' });
+		}
+		const user = await db.User.findOne({ reset_token: token }).lean();
+		if (!user) return res.status(400).json({ error: 'Invalid token' });
+		if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
+			return res.status(400).json({ error: 'Token expired' });
+		}
+		// Update password and clear token
+		const hash = require('bcryptjs').hashSync(password, 10);
+		await db.User.findByIdAndUpdate(user._id, { password_hash: hash, reset_token: null, reset_expires: null });
+		res.json({ success: true });
+	} catch (e) {
+		console.error('Reset password error:', e);
+		res.status(500).json({ error: 'Reset failed' });
 	}
 });

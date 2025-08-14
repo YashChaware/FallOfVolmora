@@ -37,7 +37,9 @@ class VelmoraDatabase {
 			mafia_games: { type: Number, default: 0 },
 			civilian_games: { type: Number, default: 0 },
 			is_online: { type: Boolean, default: false },
-			friend_code: { type: String, required: true, unique: true, index: true }
+			friend_code: { type: String, required: true, unique: true, index: true },
+			reset_token: { type: String, default: null, index: true },
+			reset_expires: { type: Date, default: null }
 		});
 
 		const friendSchema = new mongoose.Schema({
@@ -170,9 +172,12 @@ class VelmoraDatabase {
 		};
 	}
 
-	async validateUser(username, password) {
+	async validateUser(identifier, password) {
 		await this.ensureReady();
-		const user = await this.User.findOne({ username }).lean();
+		const query = typeof identifier === 'string' && identifier.includes('@')
+			? { email: identifier }
+			: { $or: [{ username: identifier }, { email: identifier }] };
+		const user = await this.User.findOne(query).lean();
 		if (user && bcrypt.compareSync(password, user.password_hash)) {
 			await this.updateLastLogin(user._id.toString());
 			return {

@@ -97,6 +97,44 @@ app.post('/api/profile/avatar', upload.single('avatar'), async (req, res) => {
 	}
 });
 
+// Profile updates
+app.post('/api/profile/username', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { username } = req.body;
+		if (!username || username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Username must be 3-20 chars' });
+		await db.updateUsername(req.session.userId, username.trim());
+		res.json({ success: true, username: username.trim() });
+	} catch (e) {
+		res.status(400).json({ error: e.message || 'Failed to update username' });
+	}
+});
+
+app.post('/api/profile/bio', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { bio } = req.body;
+		await db.updateBio(req.session.userId, (bio || '').slice(0, 280));
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: 'Failed to update bio' });
+	}
+});
+
+app.post('/api/profile/privacy', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { dmFromFriendsOnly, friendRequestsEnabled } = req.body;
+		await db.updatePrivacy(req.session.userId, {
+			dm_from_friends_only: !!dmFromFriendsOnly,
+			friend_requests_enabled: friendRequestsEnabled !== false
+		});
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: 'Failed to update privacy' });
+	}
+});
+
 // Authentication routes
 app.post('/api/register', authLimiter, async (req, res) => {
     try {
@@ -264,6 +302,14 @@ app.post('/api/friends/add', async (req, res) => {
 		const { username, friendCode } = req.body;
 		if (!username && !friendCode) {
 			return res.status(400).json({ error: 'Username or Friend Code is required' });
+		}
+
+		let targetUser = null;
+		if (friendCode) targetUser = await db.getUserByFriendCode(friendCode.trim());
+		if (!targetUser && username) targetUser = await db.getUserByUsername(username.trim());
+		if (!targetUser) return res.status(404).json({ error: 'User not found' });
+		if (targetUser.friend_requests_enabled === false) {
+			return res.status(403).json({ error: 'This user is not accepting friend requests' });
 		}
 
 		let result;
@@ -2659,6 +2705,26 @@ io.on('connection', (socket) => {
     });
 
     // Direct Messages API
+    socket.on('dmMessage', async (data) => {
+        try {
+            const fromUserId = socket.userId;
+            const { toUserId, text } = data;
+            if (!fromUserId || !toUserId || !text || text.length > 1000) return;
+            const canDM = await db.areFriends(fromUserId, toUserId);
+            if (!canDM) return;
+            const msg = await db.createDirectMessage(fromUserId, toUserId, text);
+            const recipientSocketId = userSessions.get(toUserId);
+            if (recipientSocketId) {
+                io.to(recipientSocketId).emit('dmMessage', { fromUserId, text: msg.text, createdAt: msg.createdAt });
+            }
+            // Echo back to sender UI
+            socket.emit('dmMessage', { fromUserId, text: msg.text, createdAt: msg.createdAt });
+        } catch (e) {
+            console.error('dmMessage error:', e);
+        }
+    });
+
+    // Enforce DM permission
     socket.on('dmMessage', async (data) => {
         try {
             const fromUserId = socket.userId;

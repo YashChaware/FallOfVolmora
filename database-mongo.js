@@ -27,6 +27,7 @@ class VelmoraDatabase {
 			password_hash: { type: String, required: true },
 			display_name: { type: String, required: true },
 			avatar_url: { type: String, default: null },
+			bio: { type: String, default: '' },
 			favorite_role: { type: String, default: null },
 			created_at: { type: Date, default: Date.now },
 			last_login: { type: Date, default: null },
@@ -39,7 +40,10 @@ class VelmoraDatabase {
 			is_online: { type: Boolean, default: false },
 			friend_code: { type: String, required: true, unique: true, index: true },
 			reset_token: { type: String, default: null, index: true },
-			reset_expires: { type: Date, default: null }
+			reset_expires: { type: Date, default: null },
+			// Privacy
+			dm_from_friends_only: { type: Boolean, default: true },
+			friend_requests_enabled: { type: Boolean, default: true }
 		});
 
 		const friendSchema = new mongoose.Schema({
@@ -159,6 +163,7 @@ class VelmoraDatabase {
 			email: user.email,
 			display_name: user.display_name,
 			avatar_url: user.avatar_url || null,
+			bio: user.bio || '',
 			created_at: user.created_at,
 			total_games: user.total_games,
 			total_wins: user.total_wins,
@@ -168,7 +173,9 @@ class VelmoraDatabase {
 			civilian_games: user.civilian_games,
 			favorite_role: user.favorite_role || null,
 			is_online: !!user.is_online,
-			friend_code: user.friend_code
+			friend_code: user.friend_code,
+			dm_from_friends_only: !!user.dm_from_friends_only,
+			friend_requests_enabled: !!user.friend_requests_enabled
 		};
 	}
 
@@ -214,6 +221,34 @@ class VelmoraDatabase {
 	async updateAvatarUrl(userId, avatarUrl) {
 		await this.ensureReady();
 		await this.User.findByIdAndUpdate(userId, { avatar_url: avatarUrl });
+	}
+
+	async canReceiveDm(recipientId, senderId) {
+		await this.ensureReady();
+		const recipient = await this.User.findById(recipientId).lean();
+		if (!recipient) return false;
+		if (!recipient.dm_from_friends_only) return true;
+		return await this.areFriends(recipientId, senderId);
+	}
+
+	async updateUsername(userId, newUsername) {
+		await this.ensureReady();
+		const exists = await this.User.findOne({ username: newUsername }).lean();
+		if (exists) throw new Error('Username already exists');
+		await this.User.findByIdAndUpdate(userId, { username: newUsername });
+	}
+
+	async updateBio(userId, bio) {
+		await this.ensureReady();
+		await this.User.findByIdAndUpdate(userId, { bio });
+	}
+
+	async updatePrivacy(userId, settings) {
+		await this.ensureReady();
+		const update = {};
+		if (typeof settings.dm_from_friends_only === 'boolean') update.dm_from_friends_only = settings.dm_from_friends_only;
+		if (typeof settings.friend_requests_enabled === 'boolean') update.friend_requests_enabled = settings.friend_requests_enabled;
+		await this.User.findByIdAndUpdate(userId, update);
 	}
 
 	// Friends system methods

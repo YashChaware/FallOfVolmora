@@ -357,7 +357,7 @@ class AuthManager {
         const existingHeader = content ? content.querySelector('.profile-header') : null;
         if (existingHeader) existingHeader.remove();
         
-        // Header section with edit controls
+        // Header with edit controls plus bio and privacy toggles
         const headerHtml = `
             <div class="profile-header" style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                 <div style="position:relative;">
@@ -372,15 +372,57 @@ class AuthManager {
                     <div class="profile-edit-controls" style="display:none; gap:6px; margin-top:6px;">
                         <input type="text" id="displayNameInput" value="${profile.displayName || ''}" maxlength="30" style="width:200px;">
                         <button id="displayNameEditBtn" class="btn-mini">Save</button>
+                        <input type="text" id="usernameInput" value="${profile.username || ''}" maxlength="20" style="width:180px;" placeholder="Username">
+                        <button id="usernameEditBtn" class="btn-mini">Save</button>
                     </div>
                     <div style="font-size:12px; color:#666;">Friend Code: ${profile.friendCode || '—'}</div>
                 </div>
                 <button id="profileEditBtn" class="btn-mini" style="margin-left:auto;">Edit Profile</button>
             </div>
+            <div class="profile-extra" style="margin-bottom:12px;">
+                <label style="display:block; margin-bottom:6px;">Bio</label>
+                <textarea id="bioInput" rows="2" style="width:100%; resize:vertical;">${profile.bio || ''}</textarea>
+                <div style="display:flex; gap:16px; align-items:center; margin-top:8px;">
+                    <label><input type="checkbox" id="dmFriendsOnlyToggle" ${profile.dmFromFriendsOnly !== false ? 'checked' : ''}> DMs from friends only</label>
+                    <label><input type="checkbox" id="friendReqEnabledToggle" ${profile.friendRequestsEnabled !== false ? 'checked' : ''}> Allow friend requests</label>
+                    <button id="savePrivacyBtn" class="btn-mini">Save</button>
+                </div>
+            </div>
         `;
-        // Insert header
         if (content) content.insertAdjacentHTML('afterbegin', headerHtml);
-
+        
+        // Wire extra save
+        const savePrivacyBtn = document.getElementById('savePrivacyBtn');
+        if (savePrivacyBtn) {
+            savePrivacyBtn.onclick = async () => {
+                try {
+                    const bio = (document.getElementById('bioInput')?.value || '').slice(0, 280);
+                    await fetch('/api/profile/bio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio }) });
+                    const dmFriendsOnly = !!document.getElementById('dmFriendsOnlyToggle')?.checked;
+                    const friendRequestsEnabled = !!document.getElementById('friendReqEnabledToggle')?.checked;
+                    await fetch('/api/profile/privacy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dmFromFriendsOnly: dmFriendsOnly, friendRequestsEnabled }) });
+                    this.showNotification('Profile updated', 'success');
+                } catch {
+                    this.showNotification('Failed to update profile', 'error');
+                }
+            };
+        }
+        
+        const usernameBtn = document.getElementById('usernameEditBtn');
+        if (usernameBtn) {
+            usernameBtn.onclick = async () => {
+                const val = document.getElementById('usernameInput')?.value.trim();
+                if (!val || val.length < 3 || val.length > 20) {
+                    this.showNotification('Username must be 3-20 chars', 'error');
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/profile/username', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: val }) });
+                    if (res.ok) this.showNotification('Username updated', 'success'); else this.showNotification('Failed to update username', 'error');
+                } catch {}
+            };
+        }
+        
         // Stats
         document.getElementById('profileTotalGames').textContent = profile.totalGames || 0;
         document.getElementById('profileTotalWins').textContent = profile.totalWins || 0;
@@ -390,13 +432,10 @@ class AuthManager {
         const overallWinRate = profile.totalGames > 0 ? Math.round((profile.totalWins / profile.totalGames) * 100) : 0;
         document.getElementById('profileWinRate').textContent = `${overallWinRate}%`;
         
-        // Detailed win rates (mafia vs civilian)
         const mafiaGames = profile.mafiaGames || profile.mafia_games || 0;
         const civilianGames = profile.civilianGames || profile.civilian_games || 0;
         const mafiaRate = mafiaGames > 0 ? Math.round((profile.mafiaWins / mafiaGames) * 100) : 0;
         const civilianRate = civilianGames > 0 ? Math.round((profile.civilianWins / civilianGames) * 100) : 0;
-        
-        // Append detailed rates under stats
         const stats = modal ? modal.querySelector('.profile-stats') : null;
         if (stats && !stats.querySelector('.detailed-rates')) {
             const rates = document.createElement('div');

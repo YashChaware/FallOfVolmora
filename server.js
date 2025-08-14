@@ -697,34 +697,46 @@ function getBotManager(roomCode) {
 }
 
 function addBotsToRoom(roomCode) {
-    const room = rooms.get(roomCode);
-    if (!room || !room.settings.enableBots) return;
+	const room = rooms.get(roomCode);
+	if (!room || !room.settings.enableBots) return;
 
-    const currentPlayerCount = room.players.size;
-    // In tutorial, allow exceeding the default 4-player cap to match desired botCount
-    if (!room.tutorial?.active && currentPlayerCount >= 4) return; // Only add bots if under 4 players in normal games
-
-    const botManager = getBotManager(roomCode) || createBotManager(roomCode);
-    // Desired total players: normal = 4; tutorial = 1 human + configured botCount
-    const humanCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
-    const desiredTotal = room.tutorial?.active ? (humanCount + (room.settings.botCount || 3)) : 4;
-    const botsToAdd = Math.max(0, desiredTotal - currentPlayerCount);
-
-    for (let i = 0; i < botsToAdd; i++) {
-        const bot = botManager.createBot();
-        room.players.set(bot.id, {
-            id: bot.id,
-            userId: null,
-            name: bot.name,
-            role: null,
-            alive: true,
-            isAuthenticated: false,
-            isBot: true
-        });
-    }
-
-    console.log(`Added ${botsToAdd} bots to room ${roomCode}`);
-    return botsToAdd;
+	const botManager = getBotManager(roomCode) || createBotManager(roomCode);
+	const maxPlayers = room.settings.maxPlayers || 10;
+	const currentHumans = Array.from(room.players.values()).filter(p => !p.isBot).length;
+	const currentBots = Array.from(room.players.values()).filter(p => p.isBot).length;
+	const desiredBots = Math.max(0, Math.min(room.settings.botCount || 0, Math.max(0, maxPlayers - currentHumans)));
+	
+	if (currentBots < desiredBots) {
+		const toAdd = desiredBots - currentBots;
+		for (let i = 0; i < toAdd; i++) {
+			const bot = botManager.createBot();
+			room.players.set(bot.id, {
+				id: bot.id,
+				userId: null,
+				name: bot.name,
+				role: null,
+				alive: true,
+				isAuthenticated: false,
+				isBot: true
+			});
+		}
+		console.log(`Added ${toAdd} bots to room ${roomCode}`);
+		return toAdd;
+	}
+	
+	if (currentBots > desiredBots) {
+		let toRemove = currentBots - desiredBots;
+		for (const [playerId, player] of room.players) {
+			if (toRemove <= 0) break;
+			if (player.isBot) {
+				room.players.delete(playerId);
+				botManager.removeBot(playerId);
+				toRemove--;
+			}
+		}
+		console.log(`Trimmed bots to selected count in room ${roomCode}`);
+		return 0;
+	}
 }
 
 function removeBotsFromRoom(roomCode) {
@@ -747,12 +759,13 @@ function removeBotsFromRoom(roomCode) {
 }
 
 function shouldAddBots(roomCode) {
-    const room = rooms.get(roomCode);
-    if (!room || !room.settings.enableBots) return false;
-    
-    const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
-    // Only add bots if there are human players present and less than 4 total needed
-    return humanPlayerCount > 0 && humanPlayerCount < 4;
+	const room = rooms.get(roomCode);
+	if (!room || !room.settings.enableBots) return false;
+	const currentHumans = Array.from(room.players.values()).filter(p => !p.isBot).length;
+	const currentBots = Array.from(room.players.values()).filter(p => p.isBot).length;
+	const desiredBots = room.settings.botCount || 0;
+	const maxPlayers = room.settings.maxPlayers || 10;
+	return currentHumans + currentBots < Math.min(maxPlayers, currentHumans + desiredBots) && currentBots < desiredBots;
 }
 
 function hasHumanPlayers(roomCode) {
@@ -1789,6 +1802,20 @@ io.on('connection', (socket) => {
             if (!userId || !room.whitelist.has(userId)) {
                 socket.emit('error', 'Room is locked');
                 return;
+            }
+        }
+        
+        // Free up space by removing bots if the lobby is full and game not started
+        if (!room.gameStarted && room.players.size >= room.settings.maxPlayers) {
+            const botManager = getBotManager(roomCode) || null;
+            let needed = room.players.size - room.settings.maxPlayers + 1; // slots to free for this join
+            for (const [pid, p] of room.players) {
+                if (needed <= 0) break;
+                if (p.isBot) {
+                    room.players.delete(pid);
+                    if (botManager) botManager.removeBot(pid);
+                    needed--;
+                }
             }
         }
         

@@ -13,6 +13,7 @@ class AuthManager {
     init() {
         this.setupEventListeners();
         this.checkAuthStatus();
+        this.handleResetDeepLink();
     }
 
     setupEventListeners() {
@@ -23,7 +24,7 @@ class AuthManager {
         if (registerBtn) registerBtn.addEventListener('click', () => this.showRegisterModal());
         const logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) logoutBtn.addEventListener('click', () => this.logout());
-
+        
         // Modal controls
         const closeAuth = document.getElementById('closeAuthModal');
         if (closeAuth) closeAuth.addEventListener('click', () => this.hideAuthModal());
@@ -33,7 +34,7 @@ class AuthManager {
         if (toLogin) toLogin.addEventListener('click', () => this.switchToLoginForm());
         const asGuest = document.getElementById('registerAsGuest');
         if (asGuest) asGuest.addEventListener('click', () => this.registerAsGuest());
-
+        
         // Profile and friends
         const profileBtn = document.getElementById('profileBtn');
         if (profileBtn) profileBtn.addEventListener('click', () => this.showProfileModal());
@@ -43,7 +44,7 @@ class AuthManager {
         if (closeProfile) closeProfile.addEventListener('click', () => this.hideProfileModal());
         const closeFriends = document.getElementById('closeFriendsModal');
         if (closeFriends) closeFriends.addEventListener('click', () => this.hideFriendsModal());
-
+        
         // Forms
         const loginForm = document.getElementById('loginFormElement');
         if (loginForm) loginForm.addEventListener('submit', (e) => this.handleLogin(e));
@@ -53,13 +54,17 @@ class AuthManager {
         if (addFriendBtn) addFriendBtn.addEventListener('click', () => this.addFriend());
         const addByCodeBtn = document.getElementById('addFriendByCodeBtn');
         if (addByCodeBtn) addByCodeBtn.addEventListener('click', () => this.addFriendByCode());
-
+        
         // Room invitations
         const acceptInvitationBtn = document.getElementById('acceptInvitationBtn');
         if (acceptInvitationBtn) acceptInvitationBtn.addEventListener('click', () => this.acceptInvitation());
         const declineInvitationBtn = document.getElementById('declineInvitationBtn');
         if (declineInvitationBtn) declineInvitationBtn.addEventListener('click', () => this.declineInvitation());
-
+        
+        // Delete account (from hamburger)
+        const deleteAccountBtn = document.getElementById('deleteAccountDropdownBtn');
+        if (deleteAccountBtn) deleteAccountBtn.addEventListener('click', () => this.deleteAccount());
+        
         // Click outside modal to close
         window.addEventListener('click', (e) => {
             if (e.target && e.target.classList && e.target.classList.contains('modal')) {
@@ -1031,6 +1036,134 @@ class AuthManager {
 		} catch (e) {
 			this.showNotification('Failed to send', 'error');
 		}
+	}
+
+	openForgotPasswordModal() {
+		let modal = document.getElementById('forgotModal');
+		if (!modal) {
+			modal = document.createElement('div');
+			modal.id = 'forgotModal';
+			modal.className = 'modal';
+			modal.innerHTML = `
+				<div class="modal-content" style="max-width:420px;">
+					<span class="close" id="closeForgotModal">&times;</span>
+					<h3>Forgot Password</h3>
+					<div class="form-group"><input id="forgotEmail" type="email" placeholder="Your email"></div>
+					<div class="form-actions"><button id="sendResetBtn" class="btn-primary">Send reset link</button></div>
+					<div id="resetLinkInfo" class="help-text" style="margin-top:8px;"></div>
+				</div>
+			`;
+			document.body.appendChild(modal);
+			document.getElementById('closeForgotModal').onclick = () => modal.style.display = 'none';
+			document.getElementById('sendResetBtn').onclick = async () => {
+				const email = (document.getElementById('forgotEmail').value || '').trim();
+				if (!email) { this.showNotification('Enter your email', 'error'); return; }
+				try {
+					const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ email }) });
+					const data = await res.json();
+					if (res.ok) {
+						document.getElementById('resetLinkInfo').innerHTML = data.resetLink ? `Reset link: <a href="${data.resetLink}">${data.resetLink}</a>` : 'If your email exists, you will receive a reset link.';
+						this.showNotification('If the email exists, a reset link was generated.', 'success');
+					} else {
+						this.showNotification(data.error || 'Failed to send reset link', 'error');
+					}
+				} catch (e) {
+					this.showNotification('Failed to send reset link', 'error');
+				}
+			};
+		}
+		modal.style.display = 'flex';
+	}
+
+	openResetPasswordModal(tokenFromUrl = '') {
+		let modal = document.getElementById('resetModal');
+		if (!modal) {
+			modal = document.createElement('div');
+			modal.id = 'resetModal';
+			modal.className = 'modal';
+			modal.innerHTML = `
+				<div class="modal-content" style="max-width:420px;">
+					<span class="close" id="closeResetModal">&times;</span>
+					<h3>Reset Password</h3>
+					<div class="form-group"><input id="resetToken" type="text" placeholder="Reset token"></div>
+					<div class="form-group"><input id="resetNewPassword" type="password" placeholder="New password (min 6)"></div>
+					<div class="form-actions"><button id="applyResetBtn" class="btn-primary">Reset Password</button></div>
+				</div>
+			`;
+			document.body.appendChild(modal);
+			document.getElementById('closeResetModal').onclick = () => modal.style.display = 'none';
+			document.getElementById('applyResetBtn').onclick = async () => {
+				const token = (document.getElementById('resetToken').value || '').trim();
+				const password = (document.getElementById('resetNewPassword').value || '').trim();
+				if (!token || !password) { this.showNotification('Enter token and new password', 'error'); return; }
+				try {
+					const res = await fetch('/api/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token, password }) });
+					const data = await res.json();
+					if (res.ok) {
+						this.showNotification('Password reset successful. Please log in.', 'success');
+						modal.style.display = 'none';
+						this.showLoginModal();
+					} else {
+						this.showNotification(data.error || 'Reset failed', 'error');
+					}
+				} catch (e) {
+					this.showNotification('Reset failed', 'error');
+				}
+			};
+		}
+		modal.style.display = 'flex';
+		if (tokenFromUrl) document.getElementById('resetToken').value = tokenFromUrl;
+	}
+
+	handleResetDeepLink() {
+		try {
+			const params = new URLSearchParams(window.location.search);
+			const action = params.get('action');
+			const token = params.get('token');
+			if (action === 'reset' && token) {
+				this.openResetPasswordModal(token);
+			}
+		} catch {}
+	}
+
+	async deleteAccount() {
+		if (!this.isAuthenticated) { this.showNotification('Log in first', 'error'); return; }
+		// Confirm by typing DELETE
+		let modal = document.getElementById('deleteAccountModal');
+		if (!modal) {
+			modal = document.createElement('div');
+			modal.id = 'deleteAccountModal';
+			modal.className = 'modal';
+			modal.innerHTML = `
+				<div class="modal-content" style="max-width:420px;">
+					<span class="close" id="closeDeleteModal">&times;</span>
+					<h3>Delete Account</h3>
+					<p>Type <strong>DELETE</strong> to confirm. This action is irreversible.</p>
+					<div class="form-group"><input id="deleteConfirmInput" placeholder="Type DELETE"></div>
+					<div class="form-actions"><button id="confirmDeleteBtn" class="btn-primary">Delete</button></div>
+				</div>
+			`;
+			document.body.appendChild(modal);
+			document.getElementById('closeDeleteModal').onclick = () => modal.style.display = 'none';
+			document.getElementById('confirmDeleteBtn').onclick = async () => {
+				const val = (document.getElementById('deleteConfirmInput').value || '').trim();
+				if (val !== 'DELETE') { this.showNotification('Please type DELETE to confirm', 'error'); return; }
+				try {
+					const res = await fetch('/api/account', { method:'DELETE' });
+					if (res.ok) {
+						this.setCurrentUser(null);
+						modal.style.display = 'none';
+						this.showNotification('Account deleted', 'success');
+					} else {
+						const data = await res.json().catch(()=>({}));
+						this.showNotification(data.error || 'Delete failed', 'error');
+					}
+				} catch (e) {
+					this.showNotification('Delete failed', 'error');
+				}
+			};
+		}
+		modal.style.display = 'flex';
 	}
 }
 

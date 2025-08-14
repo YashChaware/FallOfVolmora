@@ -8,10 +8,35 @@ const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const Database = require('./database-mongo');
 const BotManager = require('./bot-manager');
+const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+
+// File uploads setup
+const uploadsRoot = path.join(__dirname, 'uploads');
+const avatarDir = path.join(uploadsRoot, 'avatars');
+try { fs.mkdirSync(avatarDir, { recursive: true }); } catch {}
+const storage = multer.diskStorage({
+	destination: (req, file, cb) => cb(null, avatarDir),
+	filename: (req, file, cb) => {
+		const ext = path.extname(file.originalname).toLowerCase();
+		const filename = `${req.session?.userId || 'anon'}-${Date.now()}${ext}`;
+		cb(null, filename);
+	}
+});
+const upload = multer({
+	storage,
+	limits: { fileSize: 2 * 1024 * 1024 },
+	fileFilter: (req, file, cb) => {
+		const allowed = ['.png', '.jpg', '.jpeg', '.webp'];
+		const ext = path.extname(file.originalname).toLowerCase();
+		if (allowed.includes(ext)) return cb(null, true);
+		cb(new Error('Invalid file type'));
+	}
+});
 
 // Initialize database
 const db = new Database();
@@ -20,26 +45,56 @@ const db = new Database();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files
+app.use(express.static(path.join(__dirname)));
+app.use('/uploads', express.static(uploadsRoot));
+
 // Session configuration
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'velmora-secret-key-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: false, // Set to true in production with HTTPS
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+	secret: process.env.SESSION_SECRET || 'velmora-secret-key-change-in-production',
+	resave: false,
+	saveUninitialized: false,
+	cookie: {
+		secure: false, // Set to true in production with HTTPS
+		maxAge: 24 * 60 * 60 * 1000 // 24 hours
+	}
 }));
 
 // Rate limiting
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // limit each IP to 5 requests per windowMs
-    message: 'Too many authentication attempts, please try again later.'
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	max: 5, // limit each IP to 5 requests per windowMs
+	message: 'Too many authentication attempts, please try again later.'
 });
 
-// Serve static files
-app.use(express.static(path.join(__dirname)));
+// Profile update endpoints
+app.post('/api/profile/display-name', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { displayName } = req.body;
+		if (!displayName || displayName.trim().length < 3 || displayName.trim().length > 30) {
+			return res.status(400).json({ error: 'Display name must be 3-30 characters' });
+		}
+		await db.updateDisplayName(req.session.userId, displayName.trim());
+		res.json({ success: true, displayName: displayName.trim() });
+	} catch (error) {
+		console.error('Update display name error:', error);
+		res.status(500).json({ error: 'Failed to update display name' });
+	}
+});
+
+app.post('/api/profile/avatar', upload.single('avatar'), async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+		const relativeUrl = `/uploads/avatars/${req.file.filename}`;
+		await db.updateAvatarUrl(req.session.userId, relativeUrl);
+		res.json({ success: true, avatarUrl: relativeUrl });
+	} catch (error) {
+		console.error('Update avatar error:', error);
+		res.status(400).json({ error: error.message || 'Failed to update avatar' });
+	}
+});
 
 // Authentication routes
 app.post('/api/register', authLimiter, async (req, res) => {
@@ -75,13 +130,18 @@ app.post('/api/register', authLimiter, async (req, res) => {
         req.session.userId = user.id;
         req.session.username = user.username;
 
+        // Fetch full profile for friend code and avatar
+        const fullUser = await db.getUserById(user.id);
+
         res.json({
             success: true,
             user: {
                 id: user.id,
                 username: user.username,
                 displayName: user.displayName,
-                email: user.email
+                email: user.email,
+                avatarUrl: fullUser?.avatar_url || null,
+                friendCode: fullUser?.friend_code || null
             }
         });
     } catch (error) {
@@ -106,6 +166,9 @@ app.post('/api/login', authLimiter, async (req, res) => {
         req.session.userId = user.id;
         req.session.username = user.username;
 
+        // Fetch full profile for friend code
+        const fullUser = await db.getUserById(user.id);
+
         res.json({
             success: true,
             user: {
@@ -117,7 +180,9 @@ app.post('/api/login', authLimiter, async (req, res) => {
                 totalWins: user.totalWins,
                 mafiaWins: user.mafiaWins,
                 civilianWins: user.civilianWins,
-                favoriteRole: user.favoriteRole
+                favoriteRole: user.favoriteRole,
+                avatarUrl: user.avatarUrl || fullUser?.avatar_url || null,
+                friendCode: fullUser?.friend_code || null
             }
         });
     } catch (error) {
@@ -159,7 +224,9 @@ app.get('/api/profile', async (req, res) => {
             mafiaWins: user.mafia_wins,
             civilianWins: user.civilian_wins,
             favoriteRole: user.favorite_role,
-            createdAt: user.created_at
+            createdAt: user.created_at,
+            avatarUrl: user.avatar_url || null,
+            friendCode: user.friend_code || null
         });
     } catch (error) {
         console.error('Profile fetch error:', error);
@@ -187,22 +254,27 @@ app.get('/api/friends', async (req, res) => {
 });
 
 app.post('/api/friends/add', async (req, res) => {
-    try {
-        if (!req.session.userId) {
-            return res.status(401).json({ error: 'Not authenticated' });
-        }
+	try {
+		if (!req.session.userId) {
+			return res.status(401).json({ error: 'Not authenticated' });
+		}
 
-        const { username } = req.body;
-        if (!username) {
-            return res.status(400).json({ error: 'Username is required' });
-        }
+		const { username, friendCode } = req.body;
+		if (!username && !friendCode) {
+			return res.status(400).json({ error: 'Username or Friend Code is required' });
+		}
 
-        const result = await db.sendFriendRequest(req.session.userId, username);
-        res.json({ success: true, friend: result });
-    } catch (error) {
-        console.error('Add friend error:', error);
-        res.status(400).json({ error: error.message });
-    }
+		let result;
+		if (friendCode) {
+			result = await db.sendFriendRequestByCode(req.session.userId, friendCode.trim());
+		} else {
+			result = await db.sendFriendRequest(req.session.userId, username.trim());
+		}
+		res.json({ success: true, friend: result });
+	} catch (error) {
+		console.error('Add friend error:', error);
+		res.status(400).json({ error: error.message });
+	}
 });
 
 app.post('/api/friends/accept', async (req, res) => {
@@ -2583,9 +2655,83 @@ io.on('connection', (socket) => {
             }
         }
     });
+
+    // Direct Messages API
+    socket.on('dmMessage', async (data) => {
+        try {
+            const fromUserId = socket.userId;
+            const { toUserId, text } = data;
+            if (!fromUserId || !toUserId || !text || text.length > 1000) return;
+            const canDM = await db.areFriends(fromUserId, toUserId);
+            if (!canDM) return;
+            const msg = await db.createDirectMessage(fromUserId, toUserId, text);
+            const recipientSocketId = userSessions.get(toUserId);
+            if (recipientSocketId) {
+                io.to(recipientSocketId).emit('dmMessage', { fromUserId, text: msg.text, createdAt: msg.createdAt });
+            }
+            // Echo back to sender UI
+            socket.emit('dmMessage', { fromUserId, text: msg.text, createdAt: msg.createdAt });
+        } catch (e) {
+            console.error('dmMessage error:', e);
+        }
+    });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`The Fall of Velmora server running on port ${PORT}`);
 }); 
+
+// Direct Messages API routes
+app.get('/api/dm/:otherUserId', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { otherUserId } = req.params;
+		const canDM = await db.areFriends(req.session.userId, otherUserId);
+		if (!canDM) return res.status(403).json({ error: 'You can only message friends' });
+		const { before, limit } = req.query;
+		const msgs = await db.getDirectMessagesBetween(req.session.userId, otherUserId, Math.min(parseInt(limit) || 50, 100), before);
+		res.json(msgs);
+	} catch (e) {
+		console.error('DM fetch error:', e);
+		res.status(500).json({ error: 'Failed to fetch messages' });
+	}
+});
+
+app.post('/api/dm/:otherUserId', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { otherUserId } = req.params;
+		const { text } = req.body;
+		if (!text || text.trim().length === 0 || text.length > 1000) {
+			return res.status(400).json({ error: 'Invalid message' });
+		}
+		const canDM = await db.areFriends(req.session.userId, otherUserId);
+		if (!canDM) return res.status(403).json({ error: 'You can only message friends' });
+		const msg = await db.createDirectMessage(req.session.userId, otherUserId, text);
+		// Emit to recipient if online
+		const recipientSocketId = userSessions.get(otherUserId);
+		if (recipientSocketId) {
+			io.to(recipientSocketId).emit('dmMessage', { fromUserId: msg.fromUserId, text: msg.text, createdAt: msg.createdAt });
+		}
+		res.json({ success: true, message: msg });
+	} catch (e) {
+		console.error('DM send error:', e);
+		res.status(500).json({ error: 'Failed to send message' });
+	}
+});
+
+// Friend request via profile
+app.post('/api/profile/:otherUserId/friend-request', async (req, res) => {
+	try {
+		if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
+		const { otherUserId } = req.params;
+		const other = await db.getUserById(otherUserId);
+		if (!other) return res.status(404).json({ error: 'User not found' });
+		const result = await db.sendFriendRequest(req.session.userId, other.username);
+		res.json({ success: true, friend: result });
+	} catch (error) {
+		console.error('Profile friend request error:', error);
+		res.status(400).json({ error: error.message });
+	}
+});

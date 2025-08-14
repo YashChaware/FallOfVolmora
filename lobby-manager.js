@@ -72,6 +72,28 @@ class LobbyManager {
         // Bot settings
         document.getElementById('enableBotsCreate').addEventListener('change', (e) => this.toggleBotSettings('Create', e.target.checked));
         document.getElementById('botToggle').addEventListener('change', (e) => this.toggleBotSettings('Lobby', e.target.checked));
+
+        // Invite link copy/share
+        const copyBtn = document.getElementById('copyInviteLinkBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => this.copyInviteLink());
+        }
+		const openInviteBtn = document.getElementById('openInviteFriendsBtn');
+		if (openInviteBtn) {
+			openInviteBtn.addEventListener('click', async () => {
+				// Refresh friends before opening
+				try {
+					const res = await fetch('/api/friends');
+					if (res.ok) {
+						const data = await res.json();
+						if (window.authManager) {
+							window.authManager.friends = data.friends || [];
+						}
+					}
+				} catch {}
+				if (window.authManager) window.authManager.openInviteFriendsModal();
+			});
+		}
     }
 
     setupSettingsListeners() {
@@ -581,12 +603,50 @@ class LobbyManager {
             alert(message);
         }
     }
+
+    getInviteLink() {
+        const roomCodeSpan = document.getElementById('currentRoomCode');
+        const roomCode = roomCodeSpan ? roomCodeSpan.textContent.trim() : window.game?.currentRoomCode;
+        if (!roomCode) return '';
+        const origin = window.location.origin;
+        // Deep link with accept parameter to auto-open join flow when visited
+        return `${origin}/?action=join&room=${encodeURIComponent(roomCode)}`;
+    }
+
+    async copyInviteLink() {
+        const link = this.getInviteLink();
+        if (!link) {
+            this.showNotification('No active room to share', 'error');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(link);
+            this.showNotification('Invite link copied! Share it anywhere.', 'success');
+        } catch (e) {
+            this.showNotification(link, 'info');
+        }
+    }
+
+    // Handle deep link on load
+    maybeHandleDeepLink() {
+        const params = new URLSearchParams(window.location.search);
+        const action = params.get('action');
+        const room = params.get('room');
+        if (action === 'join' && room) {
+            // If authenticated, auto-join; else prompt name and join
+            document.getElementById('privateLobbyCode').value = room.toUpperCase();
+            this.joinPrivateLobby();
+            // Clear params to avoid re-trigger
+            history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
 }
 
 // Initialize the lobby manager when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     if (!window.lobbyManager) {
         window.lobbyManager = new LobbyManager();
+        window.lobbyManager.maybeHandleDeepLink();
         console.log('Lobby manager initialized');
     }
 });

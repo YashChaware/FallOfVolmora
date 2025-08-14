@@ -33,10 +33,12 @@ class AuthManager {
         document.getElementById('closeProfileModal').addEventListener('click', () => this.hideProfileModal());
         document.getElementById('closeFriendsModal').addEventListener('click', () => this.hideFriendsModal());
 
-        // Forms
-        document.getElementById('loginFormElement').addEventListener('submit', (e) => this.handleLogin(e));
-        document.getElementById('registerFormElement').addEventListener('submit', (e) => this.handleRegister(e));
-        document.getElementById('addFriendBtn').addEventListener('click', () => this.addFriend());
+        		// Forms
+		document.getElementById('loginFormElement').addEventListener('submit', (e) => this.handleLogin(e));
+		document.getElementById('registerFormElement').addEventListener('submit', (e) => this.handleRegister(e));
+		document.getElementById('addFriendBtn').addEventListener('click', () => this.addFriend());
+		const addByCodeBtn = document.getElementById('addFriendByCodeBtn');
+		if (addByCodeBtn) addByCodeBtn.addEventListener('click', () => this.addFriendByCode());
 
         // Room invitations
         document.getElementById('acceptInvitationBtn').addEventListener('click', () => this.acceptInvitation());
@@ -234,6 +236,8 @@ class AuthManager {
             if (response.ok) {
                 const profile = await response.json();
                 this.updateProfileModal(profile);
+                // Wire edit actions
+                this.setupProfileEditHandlers();
                 
                 // Fetch game history
                 const historyResponse = await fetch('/api/game-history');
@@ -252,14 +256,128 @@ class AuthManager {
         }
     }
 
+    setupProfileEditHandlers() {
+        const modal = document.getElementById('profileModal');
+        const editBtn = modal.querySelector('#profileEditBtn');
+        const nameEditBtn = modal.querySelector('#displayNameEditBtn');
+        const avatarEditBtn = modal.querySelector('#avatarEditBtn');
+        const nameInput = modal.querySelector('#displayNameInput');
+        const avatarInput = modal.querySelector('#avatarFileInput');
+
+        if (editBtn) {
+            editBtn.onclick = () => {
+                modal.querySelectorAll('.profile-edit-controls').forEach(el => el.style.display = 'flex');
+            };
+        }
+        if (nameEditBtn && nameInput) {
+            nameEditBtn.onclick = async () => {
+                const newName = nameInput.value.trim();
+                if (newName.length < 3 || newName.length > 30) {
+                    this.showNotification('Display name must be 3-30 characters', 'error');
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/profile/display-name', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ displayName: newName })
+                    });
+                    if (res.ok) {
+                        this.currentUser.displayName = newName;
+                        this.showNotification('Display name updated', 'success');
+                        this.showProfileModal();
+                    } else {
+                        const data = await res.json();
+                        this.showNotification(data.error || 'Failed to update name', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('Failed to update name', 'error');
+                }
+            };
+        }
+        if (avatarEditBtn && avatarInput) {
+            avatarEditBtn.onclick = async () => {
+                if (!avatarInput.files || avatarInput.files.length === 0) {
+                    this.showNotification('Select an image to upload', 'error');
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('avatar', avatarInput.files[0]);
+                try {
+                    const res = await fetch('/api/profile/avatar', { method: 'POST', body: formData });
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.currentUser.avatarUrl = data.avatarUrl;
+                        this.showNotification('Avatar updated', 'success');
+                        this.showProfileModal();
+                    } else {
+                        const data = await res.json();
+                        this.showNotification(data.error || 'Failed to update avatar', 'error');
+                    }
+                } catch (e) {
+                    this.showNotification('Failed to update avatar', 'error');
+                }
+            };
+        }
+    }
+
     updateProfileModal(profile) {
+        // Clear previous header if any
+        const modal = document.getElementById('profileModal');
+        const content = modal.querySelector('.profile-content');
+        const existingHeader = content.querySelector('.profile-header');
+        if (existingHeader) existingHeader.remove();
+        
+        // Header section with edit controls
+        const headerHtml = `
+            <div class="profile-header" style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                <div style="position:relative;">
+                    <img id="profileAvatarImg" src="${profile.avatarUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(profile.displayName || profile.username)}" alt="Avatar" style="width:56px; height:56px; border-radius:50%; object-fit:cover;">
+                    <div class="profile-edit-controls" style="display:none; gap:6px; margin-top:6px;">
+                        <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/webp">
+                        <button id="avatarEditBtn" class="btn-mini">Upload</button>
+                    </div>
+                </div>
+                <div>
+                    <div><strong id="profileDisplayNameText">${profile.displayName || ''}</strong> <span style="color:#888">(@${profile.username})</span></div>
+                    <div class="profile-edit-controls" style="display:none; gap:6px; margin-top:6px;">
+                        <input type="text" id="displayNameInput" value="${profile.displayName || ''}" maxlength="30" style="width:200px;">
+                        <button id="displayNameEditBtn" class="btn-mini">Save</button>
+                    </div>
+                    <div style="font-size:12px; color:#666;">Friend Code: ${profile.friendCode || '—'}</div>
+                </div>
+                <button id="profileEditBtn" class="btn-mini" style="margin-left:auto;">Edit Profile</button>
+            </div>
+        `;
+        // Insert header
+        content.insertAdjacentHTML('afterbegin', headerHtml);
+
+        // Stats
         document.getElementById('profileTotalGames').textContent = profile.totalGames || 0;
         document.getElementById('profileTotalWins').textContent = profile.totalWins || 0;
         document.getElementById('profileMafiaWins').textContent = profile.mafiaWins || 0;
         document.getElementById('profileCivilianWins').textContent = profile.civilianWins || 0;
         
-        const winRate = profile.totalGames > 0 ? Math.round((profile.totalWins / profile.totalGames) * 100) : 0;
-        document.getElementById('profileWinRate').textContent = `${winRate}%`;
+        const overallWinRate = profile.totalGames > 0 ? Math.round((profile.totalWins / profile.totalGames) * 100) : 0;
+        document.getElementById('profileWinRate').textContent = `${overallWinRate}%`;
+        
+        // Detailed win rates (mafia vs civilian)
+        const mafiaGames = profile.mafiaGames || profile.mafia_games || 0;
+        const civilianGames = profile.civilianGames || profile.civilian_games || 0;
+        const mafiaRate = mafiaGames > 0 ? Math.round((profile.mafiaWins / mafiaGames) * 100) : 0;
+        const civilianRate = civilianGames > 0 ? Math.round((profile.civilianWins / civilianGames) * 100) : 0;
+        
+        // Append detailed rates under stats
+        const stats = modal.querySelector('.profile-stats');
+        if (stats && !stats.querySelector('.detailed-rates')) {
+            const rates = document.createElement('div');
+            rates.className = 'detailed-rates';
+            rates.innerHTML = `
+                <div class="stat-item"><span class="stat-label">Mafia Win Rate:</span><span class="stat-value">${mafiaRate}%</span></div>
+                <div class="stat-item"><span class="stat-label">Civilian Win Rate:</span><span class="stat-value">${civilianRate}%</span></div>
+            `;
+            stats.appendChild(rates);
+        }
     }
 
     updateGameHistory(history) {
@@ -309,6 +427,10 @@ class AuthManager {
                 this.friends = data.friends;
                 this.friendRequests = data.friendRequests;
                 this.updateFriendsModal();
+                // Show own friend code if available
+                if (this.currentUser && this.currentUser.friend_code) {
+                    document.getElementById('yourFriendCode').textContent = `Your Friend Code: ${this.currentUser.friend_code}`;
+                }
                 document.getElementById('friendsModal').style.display = 'flex';
             } else {
                 this.showNotification('Failed to load friends', 'error');
@@ -316,6 +438,32 @@ class AuthManager {
         } catch (error) {
             console.error('Friends modal error:', error);
             this.showNotification('Failed to load friends', 'error');
+        }
+    }
+
+    // Add friend by code
+    async addFriendByCode() {
+        const friendCode = document.getElementById('addFriendCode').value.trim().toUpperCase();
+        if (!friendCode) {
+            this.showNotification('Please enter a friend code', 'error');
+            return;
+        }
+        try {
+            const response = await fetch('/api/friends/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ friendCode })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                this.showNotification('Friend request sent!', 'success');
+                document.getElementById('addFriendCode').value = '';
+            } else {
+                this.showNotification(data.error || 'Failed to send friend request', 'error');
+            }
+        } catch (error) {
+            console.error('Add friend code error:', error);
+            this.showNotification('Failed to send friend request', 'error');
         }
     }
 
@@ -334,9 +482,8 @@ class AuthManager {
                 requestItem.innerHTML = `
                     <div class="friend-info">
                         <span class="friend-name">${request.display_name}</span>
-                        <span class="friend-status">@${request.username}</span>
                     </div>
-                                        <div class="friend-actions">
+                    <div class="friend-actions">
                         <button class="btn-mini btn-accept" onclick="authManager.acceptFriendRequest('${request.id}')">Accept</button>
                         <button class="btn-mini btn-deny" onclick="authManager.denyFriendRequest('${request.id}')">Deny</button>
                     </div>
@@ -347,35 +494,56 @@ class AuthManager {
             requestsSection.style.display = 'none';
         }
 
-        // Update friends list
+        // Group friends
+        const onlineFriends = this.friends.filter(f => f.is_online);
+        const offlineFriends = this.friends.filter(f => !f.is_online);
+
         const friendsContainer = document.getElementById('friendsContainer');
         friendsContainer.innerHTML = '';
 
-        if (this.friends.length === 0) {
-            friendsContainer.innerHTML = '<p>No friends yet. Add some friends to play together!</p>';
-            return;
-        }
+        const renderGroup = (title, list) => {
+            const section = document.createElement('div');
+            section.className = 'friends-group';
+            section.innerHTML = `<h4 style="margin:8px 0;">${title} (${list.length})</h4>`;
+            if (title === 'Online Friends' && list.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'empty-state';
+                empty.textContent = 'No friends online';
+                section.appendChild(empty);
+            }
+            list.forEach(friend => {
+                const friendItem = document.createElement('div');
+                friendItem.className = 'friend-item';
+                friendItem.innerHTML = `
+                    <div class="friend-info">
+                        <span class="friend-name">${friend.display_name}</span>
+                        <span class="friend-status ${friend.is_online ? 'online' : 'offline'}">
+                            ${friend.is_online ? '🟢 Online' : '🔴 Offline'}
+                        </span>
+                    </div>
+                    <div class="friend-actions">
+                        <button class="btn-mini" onclick="authManager.openDirectMessage('${friend.id}', '${friend.display_name.replace(/'/g, "\'")}')">Message</button>
+                        ${friend.is_online && window.game && window.game.currentRoomCode ? 
+                            `<button class="btn-mini btn-invite" onclick="authManager.inviteFriend('${friend.id}')">Invite</button>` : 
+                            ''
+                        }
+                        <button class="btn-mini btn-remove" onclick="authManager.removeFriend('${friend.id}')">Remove</button>
+                    </div>
+                `;
+                section.appendChild(friendItem);
+            });
+            friendsContainer.appendChild(section);
+        };
 
-        this.friends.forEach(friend => {
-            const friendItem = document.createElement('div');
-            friendItem.className = 'friend-item';
-            friendItem.innerHTML = `
-                <div class="friend-info">
-                    <span class="friend-name">${friend.display_name}</span>
-                    <span class="friend-status ${friend.is_online ? 'online' : 'offline'}">
-                        ${friend.is_online ? '🟢 Online' : '🔴 Offline'}
-                    </span>
-                </div>
-                <div class="friend-actions">
-                    						${friend.is_online && window.game && window.game.currentRoomCode ? 
-							`<button class=\"btn-mini btn-invite\" onclick=\"authManager.inviteFriend('` + friend.id + `')\">Invite</button>` : 
-							''
-						}
-						<button class=\"btn-mini btn-remove\" onclick=\"authManager.removeFriend('` + friend.id + `')\">Remove</button>
-                </div>
-            `;
-            friendsContainer.appendChild(friendItem);
-        });
+        renderGroup('Online Friends', onlineFriends);
+        renderGroup('Offline Friends', offlineFriends);
+    }
+
+    isInPrivateLobby() {
+        if (!window.game || !window.game.currentRoomCode) return false;
+        // If we have lobby info, use its isPublic flag; default to private if not known
+        const info = window.game.currentLobbyInfo;
+        return info ? info.isPublic === false : true;
     }
 
     hideFriendsModal() {
@@ -572,6 +740,192 @@ class AuthManager {
         // If we're in the main menu, we can stay there
         // The lobby system already handles guest users
     }
+
+	openInviteFriendsModal() {
+		if (!this.isAuthenticated) {
+			this.showNotification('Log in to invite friends', 'error');
+			return;
+		}
+		const modal = document.getElementById('inviteFriendsModal');
+		const list = document.getElementById('inviteFriendsList');
+		const slotsInfo = document.getElementById('inviteSlotsInfo');
+		const online = (this.friends || []).filter(f => f.is_online);
+		list.innerHTML = '';
+		// Compute available slots = maxPlayers - current players
+		let availableSlots = 0;
+		if (window.game && window.game.gameState) {
+			const gs = window.game.gameState;
+			const current = gs.playerCount || (gs.players ? gs.players.length : 0) || 0;
+			const max = gs.settings?.maxPlayers || 10;
+			availableSlots = Math.max(0, max - current);
+		}
+		slotsInfo.textContent = availableSlots > 0 ? `Available invite slots: ${availableSlots}` : 'Lobby is full. You cannot invite more players.';
+		if (online.length === 0) {
+			list.innerHTML = '<p>No friends online</p>';
+		} else {
+			online.forEach(friend => {
+				const row = document.createElement('label');
+				row.style.display = 'flex';
+				row.style.alignItems = 'center';
+				row.style.gap = '8px';
+				row.style.padding = '6px 2px';
+				row.innerHTML = `
+					<input type="checkbox" class="invite-checkbox" value="${friend.id}">
+					<span>${friend.display_name}</span>
+				`;
+				list.appendChild(row);
+			});
+		}
+		// Enforce selection limit
+		list.addEventListener('change', (e) => {
+			if (e.target && e.target.classList.contains('invite-checkbox')) {
+				const selected = Array.from(list.querySelectorAll('.invite-checkbox:checked'));
+				if (availableSlots > 0 && selected.length > availableSlots) {
+					e.target.checked = false;
+					this.showNotification(`You can select up to ${availableSlots} friend(s)`, 'error');
+				}
+			}
+		});
+		modal.style.display = 'flex';
+		// Wire buttons
+		document.getElementById('closeInviteFriendsModal').onclick = () => modal.style.display = 'none';
+		document.getElementById('cancelInviteFriendsBtn').onclick = () => modal.style.display = 'none';
+		document.getElementById('sendInvitesBtn').onclick = () => this.sendSelectedInvites(availableSlots);
+	}
+
+	sendSelectedInvites(availableSlots = 0) {
+		if (!window.game || !window.game.currentRoomCode) {
+			this.showNotification('Create or join a lobby first', 'error');
+			return;
+		}
+		const modal = document.getElementById('inviteFriendsModal');
+		const list = document.getElementById('inviteFriendsList');
+		const selected = Array.from(list.querySelectorAll('.invite-checkbox:checked')).map(cb => cb.value);
+		if (selected.length === 0) {
+			this.showNotification('Select at least one friend', 'error');
+			return;
+		}
+		if (availableSlots > 0 && selected.length > availableSlots) {
+			this.showNotification(`You can invite only ${availableSlots} friend(s)`, 'error');
+			return;
+		}
+		selected.forEach(friendId => {
+			window.game.socket.emit('inviteFriend', {
+				friendId: friendId,
+				roomCode: window.game.currentRoomCode
+			});
+		});
+		this.showNotification('Invites sent!', 'success');
+		modal.style.display = 'none';
+	}
+
+	// Open DM panel with a friend
+	openDirectMessage(friendId, friendName) {
+		// Create DM modal if not exists
+		let modal = document.getElementById('dmModal');
+		if (!modal) {
+			modal = document.createElement('div');
+			modal.id = 'dmModal';
+			modal.className = 'modal';
+			modal.innerHTML = `
+				<div class="modal-content" style="max-width:520px;">
+					<span class="close" id="closeDmModal">&times;</span>
+					<h3 id="dmTitle">Direct Message</h3>
+					<div id="dmMessages" style="max-height:300px; overflow:auto; border:1px solid #333; padding:8px; border-radius:6px; margin-bottom:8px;"></div>
+					<div style="display:flex; gap:8px;">
+						<input id="dmInput" type="text" placeholder="Type a message… Use emojis 😀 or :smile:" style="flex:1;">
+						<button id="dmSendBtn" class="btn-primary">Send</button>
+					</div>
+				</div>
+			`;
+			document.body.appendChild(modal);
+			// Close handlers
+			document.getElementById('closeDmModal').onclick = () => modal.style.display = 'none';
+		}
+		// Title
+		document.getElementById('dmTitle').textContent = `Direct Message with ${friendName}`;
+		modal.style.display = 'flex';
+		// Load history
+		this.loadDmHistory(friendId);
+		// Wire send
+		const send = () => this.sendDm(friendId);
+		document.getElementById('dmSendBtn').onclick = send;
+		document.getElementById('dmInput').onkeypress = (e) => { if (e.key === 'Enter') send(); };
+		// Listen realtime
+		if (window.game && window.game.socket) {
+			if (!this._dmListenerBound) {
+				window.game.socket.on('dmMessage', (msg) => {
+					// Append only if from this friend or sent by me to this friend
+					const currentId = this._currentDmUserId;
+					if (!currentId) return;
+					if (msg.fromUserId === currentId || (this.currentUser && msg.fromUserId === this.currentUser.id)) {
+						this.appendDmMessage(msg.fromUserId === this.currentUser.id ? 'You' : friendName, msg.text);
+					}
+				});
+				this._dmListenerBound = true;
+			}
+			this._currentDmUserId = friendId;
+		}
+	}
+
+	async loadDmHistory(friendId) {
+		try {
+			const res = await fetch(`/api/dm/${friendId}`);
+			if (!res.ok) return;
+			const msgs = await res.json();
+			const box = document.getElementById('dmMessages');
+			box.innerHTML = '';
+			msgs.forEach(m => {
+				const author = (this.currentUser && m.fromUserId === this.currentUser.id) ? 'You' : 'Friend';
+				this.appendDmMessage(author, m.text);
+			});
+			box.scrollTop = box.scrollHeight;
+		} catch {}
+	}
+
+	appendDmMessage(author, text) {
+		const box = document.getElementById('dmMessages');
+		const div = document.createElement('div');
+		div.className = 'dm-message';
+		div.innerHTML = `<strong>${author}:</strong> ${this.renderEmojis(text)}`;
+		box.appendChild(div);
+		box.scrollTop = box.scrollHeight;
+	}
+
+	renderEmojis(text) {
+		// Basic emoji alias replacement
+		const aliases = {
+			':smile:': '😄', ':laughing:': '😆', ':thumbsup:': '👍', ':heart:': '❤️', ':fire:': '🔥', ':clap:': '👏'
+		};
+		return (text || '').replace(/:(smile|laughing|thumbsup|heart|fire|clap):/g, (m) => aliases[m] || m);
+	}
+
+	async sendDm(friendId) {
+		const input = document.getElementById('dmInput');
+		let text = input.value.trim();
+		if (!text) return;
+		if (text.length > 1000) {
+			this.showNotification('Message too long', 'error');
+			return;
+		}
+		try {
+			// Send via socket for realtime
+			if (window.game && window.game.socket) {
+				window.game.socket.emit('dmMessage', { toUserId: friendId, text });
+			}
+			// Persist via API
+			await fetch(`/api/dm/${friendId}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ text })
+			});
+			// Optimistic append
+			this.appendDmMessage('You', text);
+			input.value = '';
+		} catch (e) {
+			this.showNotification('Failed to send', 'error');
+		}
+	}
 }
 
 // Initialize the auth manager

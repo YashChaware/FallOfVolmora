@@ -224,6 +224,11 @@
                             <input type="text" id="addFriendUsername" placeholder="Enter username">
                             <button id="addFriendBtn" class="btn-primary">Add Friend</button>
                         </div>
+                        <div class="form-group" style="margin-top: 8px;">
+                            <input type="text" id="addFriendCode" placeholder="Enter Friend Code (e.g., 8 chars)">
+                            <button id="addFriendByCodeBtn" class="btn-secondary">Add by Code</button>
+                        </div>
+                        <div id="yourFriendCode" class="help-text" style="margin-top: 6px;"></div>
                     </div>
                     
                     <!-- Friend Requests -->
@@ -592,6 +597,8 @@
                     <div class="room-details">
                         <h3>Room: <span id="currentRoomCode"></span></h3>
                         <p class="room-share">Share this code with friends to join!</p>
+                        <button class="btn-small" id="copyInviteLinkBtn">Copy Invite Link</button>
+                        <button class="btn-small" id="openInviteFriendsBtn">Invite Friends</button>
                     </div>
                     
                     <!-- Win Statistics -->
@@ -868,5 +875,22 @@
     <script src="bot-manager.js"></script>
     <script src="lobby-manager.js"></script>
     <script src="main.js"></script>
+
+	<!-- Invite Friends Modal -->
+	<div class="modal" id="inviteFriendsModal" style="display:none;">
+		<div class="modal-content" style="max-width:480px;">
+			<span class="close" id="closeInviteFriendsModal">&times;</span>
+			<h2>Invite Friends</h2>
+			<p>Select online friends to invite to this lobby.</p>
+			<div id="inviteSlotsInfo" class="help-text" style="margin:6px 0 8px 0;"></div>
+			<div id="inviteFriendsList" style="max-height:300px; overflow:auto; border:1px solid #333; padding:8px; border-radius:6px;">
+				<!-- Online friends with checkboxes will be listed here -->
+			</div>
+			<div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+				<button class="btn-secondary" id="cancelInviteFriendsBtn">Cancel</button>
+				<button class="btn-primary" id="sendInvitesBtn">Send Invites</button>
+			</div>
+		</div>
+	</div>
 </body>
 </html> 

@@ -34,7 +34,10 @@ class VelmoraDatabase {
 			total_wins: { type: Number, default: 0 },
 			mafia_wins: { type: Number, default: 0 },
 			civilian_wins: { type: Number, default: 0 },
-			is_online: { type: Boolean, default: false }
+			mafia_games: { type: Number, default: 0 },
+			civilian_games: { type: Number, default: 0 },
+			is_online: { type: Boolean, default: false },
+			friend_code: { type: String, required: true, unique: true, index: true }
 		});
 
 		const friendSchema = new mongoose.Schema({
@@ -66,10 +69,19 @@ class VelmoraDatabase {
 			won: { type: Boolean, required: true }
 		});
 
+		const directMessageSchema = new mongoose.Schema({
+			from_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, required: true },
+			to_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, required: true },
+			text: { type: String, required: true },
+			created_at: { type: Date, default: Date.now, index: true },
+			read_at: { type: Date, default: null }
+		});
+
 		this.User = mongoose.model('User', userSchema);
 		this.Friend = mongoose.model('Friend', friendSchema);
 		this.GameSession = mongoose.model('GameSession', gameSessionSchema);
 		this.GameParticipant = mongoose.model('GameParticipant', gameParticipantSchema);
+		this.DirectMessage = mongoose.model('DirectMessage', directMessageSchema);
 
 		this.connected = true;
 		console.log('Connected to MongoDB Atlas');
@@ -82,6 +94,22 @@ class VelmoraDatabase {
 		}
 	}
 
+	// Internal helper to generate a unique friend code
+	async generateUniqueFriendCode() {
+		const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+		const length = 8;
+		let code = '';
+		let exists = true;
+		while (exists) {
+			code = '';
+			for (let i = 0; i < length; i++) {
+				code += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+			}
+			exists = !!(await this.User.findOne({ friend_code: code }).lean());
+		}
+		return code;
+	}
+
 	// User management methods
 	async createUser(username, email, password, displayName) {
 		await this.ensureReady();
@@ -92,11 +120,13 @@ class VelmoraDatabase {
 		if (existingEmail) throw new Error('Email already exists');
 
 		const hashedPassword = bcrypt.hashSync(password, 10);
+		const friendCode = await this.generateUniqueFriendCode();
 		const user = await this.User.create({
 			username,
 			email,
 			password_hash: hashedPassword,
-			display_name: displayName
+			display_name: displayName,
+			friend_code: friendCode
 		});
 
 		return { id: user._id.toString(), username, email, displayName };
@@ -110,6 +140,11 @@ class VelmoraDatabase {
 	async getUserByEmail(email) {
 		await this.ensureReady();
 		return this.User.findOne({ email }).lean();
+	}
+
+	async getUserByFriendCode(friendCode) {
+		await this.ensureReady();
+		return this.User.findOne({ friend_code: friendCode }).lean();
 	}
 
 	async getUserById(id) {
@@ -127,8 +162,11 @@ class VelmoraDatabase {
 			total_wins: user.total_wins,
 			mafia_wins: user.mafia_wins,
 			civilian_wins: user.civilian_wins,
+			mafia_games: user.mafia_games,
+			civilian_games: user.civilian_games,
 			favorite_role: user.favorite_role || null,
-			is_online: !!user.is_online
+			is_online: !!user.is_online,
+			friend_code: user.friend_code
 		};
 	}
 
@@ -163,10 +201,38 @@ class VelmoraDatabase {
 		await this.User.findByIdAndUpdate(userId, { is_online: false });
 	}
 
+	async updateDisplayName(userId, displayName) {
+		await this.ensureReady();
+		await this.User.findByIdAndUpdate(userId, { display_name: displayName });
+	}
+
+	async updateAvatarUrl(userId, avatarUrl) {
+		await this.ensureReady();
+		await this.User.findByIdAndUpdate(userId, { avatar_url: avatarUrl });
+	}
+
 	// Friends system methods
 	async sendFriendRequest(userId, friendUsername) {
 		await this.ensureReady();
 		const friend = await this.User.findOne({ username: friendUsername }).lean();
+		if (!friend) throw new Error('User not found');
+		if (friend._id.toString() === userId) throw new Error('Cannot add yourself as a friend');
+
+		const existing = await this.Friend.findOne({
+			$or: [
+				{ user_id: userId, friend_id: friend._id },
+				{ user_id: friend._id, friend_id: userId }
+			]
+		}).lean();
+		if (existing) throw new Error('Friend request already exists');
+
+		await this.Friend.create({ user_id: userId, friend_id: friend._id, status: 'pending' });
+		return { friendId: friend._id.toString(), friendUsername: friend.username, status: 'pending' };
+	}
+
+	async sendFriendRequestByCode(userId, friendCode) {
+		await this.ensureReady();
+		const friend = await this.User.findOne({ friend_code: friendCode }).lean();
 		if (!friend) throw new Error('User not found');
 		if (friend._id.toString() === userId) throw new Error('Cannot add yourself as a friend');
 
@@ -209,7 +275,6 @@ class VelmoraDatabase {
 		const relations = await this.Friend.find({ user_id: userId, status: 'accepted' }).populate('friend_id').lean();
 		return relations.map(r => ({
 			id: r.friend_id._id.toString(),
-			username: r.friend_id.username,
 			display_name: r.friend_id.display_name,
 			avatar_url: r.friend_id.avatar_url || null,
 			is_online: !!r.friend_id.is_online,
@@ -222,7 +287,6 @@ class VelmoraDatabase {
 		const pending = await this.Friend.find({ friend_id: userId, status: 'pending' }).populate('user_id').sort({ created_at: -1 }).lean();
 		return pending.map(p => ({
 			id: p.user_id._id.toString(),
-			username: p.user_id.username,
 			display_name: p.user_id.display_name,
 			avatar_url: p.user_id.avatar_url || null,
 			created_at: p.created_at
@@ -239,13 +303,58 @@ class VelmoraDatabase {
 		});
 	}
 
+	async areFriends(userId, otherUserId) {
+		await this.ensureReady();
+		const rel = await this.Friend.findOne({ user_id: userId, friend_id: otherUserId, status: 'accepted' }).lean();
+		return !!rel;
+	}
+
+	async createDirectMessage(fromUserId, toUserId, text) {
+		await this.ensureReady();
+		const doc = await this.DirectMessage.create({ from_user_id: fromUserId, to_user_id: toUserId, text });
+		return {
+			id: doc._id.toString(),
+			fromUserId: doc.from_user_id.toString(),
+			toUserId: doc.to_user_id.toString(),
+			text: doc.text,
+			createdAt: doc.created_at
+		};
+	}
+
+	async getDirectMessagesBetween(userId, otherUserId, limit = 50, before = null) {
+		await this.ensureReady();
+		const query = {
+			$or: [
+				{ from_user_id: userId, to_user_id: otherUserId },
+				{ from_user_id: otherUserId, to_user_id: userId }
+			]
+		};
+		if (before) query.created_at = { $lt: new Date(before) };
+		const items = await this.DirectMessage.find(query).sort({ created_at: -1 }).limit(limit).lean();
+		return items.reverse().map(m => ({
+			id: m._id.toString(),
+			fromUserId: m.from_user_id.toString(),
+			toUserId: m.to_user_id.toString(),
+			text: m.text,
+			createdAt: m.created_at
+		}));
+	}
+
 	// Game statistics methods
 	async updateUserStats(userId, role, won, teamWon) {
 		await this.ensureReady();
 		const update = { $inc: { total_games: 1 } };
+		// Track wins
 		if (won) update.$inc.total_wins = 1;
-		if (teamWon === 'mafia') update.$inc.mafia_wins = 1;
-		if (teamWon === 'innocents') update.$inc.civilian_wins = 1;
+		if (teamWon === 'mafia') update.$inc.mafia_wins = (update.$inc.mafia_wins || 0) + 1;
+		if (teamWon === 'innocents') update.$inc.civilian_wins = (update.$inc.civilian_wins || 0) + 1;
+		// Track games by alignment for rate calculations
+		const mafiaRoles = new Set(['mafia', 'suicide_bomber', 'manipulator']);
+		if (mafiaRoles.has(role)) {
+			update.$inc.mafia_games = (update.$inc.mafia_games || 0) + 1;
+		} else {
+			update.$inc.civilian_games = (update.$inc.civilian_games || 0) + 1;
+		}
 		await this.User.findByIdAndUpdate(userId, update);
 	}
 

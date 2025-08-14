@@ -17,36 +17,52 @@ class AuthManager {
 
     setupEventListeners() {
         // Authentication buttons
-        document.getElementById('loginBtn').addEventListener('click', () => this.showLoginModal());
-        document.getElementById('registerBtn').addEventListener('click', () => this.showRegisterModal());
-        document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+        const loginBtn = document.getElementById('loginBtn');
+        if (loginBtn) loginBtn.addEventListener('click', () => this.showLoginModal());
+        const registerBtn = document.getElementById('registerBtn');
+        if (registerBtn) registerBtn.addEventListener('click', () => this.showRegisterModal());
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) logoutBtn.addEventListener('click', () => this.logout());
 
         // Modal controls
-        document.getElementById('closeAuthModal').addEventListener('click', () => this.hideAuthModal());
-        document.getElementById('switchToRegister').addEventListener('click', () => this.switchToRegisterForm());
-        document.getElementById('switchToLogin').addEventListener('click', () => this.switchToLoginForm());
-        document.getElementById('registerAsGuest').addEventListener('click', () => this.registerAsGuest());
+        const closeAuth = document.getElementById('closeAuthModal');
+        if (closeAuth) closeAuth.addEventListener('click', () => this.hideAuthModal());
+        const toRegister = document.getElementById('switchToRegister');
+        if (toRegister) toRegister.addEventListener('click', () => this.switchToRegisterForm());
+        const toLogin = document.getElementById('switchToLogin');
+        if (toLogin) toLogin.addEventListener('click', () => this.switchToLoginForm());
+        const asGuest = document.getElementById('registerAsGuest');
+        if (asGuest) asGuest.addEventListener('click', () => this.registerAsGuest());
 
         // Profile and friends
-        document.getElementById('profileBtn').addEventListener('click', () => this.showProfileModal());
-        document.getElementById('friendsBtn').addEventListener('click', () => this.showFriendsModal());
-        document.getElementById('closeProfileModal').addEventListener('click', () => this.hideProfileModal());
-        document.getElementById('closeFriendsModal').addEventListener('click', () => this.hideFriendsModal());
+        const profileBtn = document.getElementById('profileBtn');
+        if (profileBtn) profileBtn.addEventListener('click', () => this.showProfileModal());
+        const friendsBtn = document.getElementById('friendsBtn');
+        if (friendsBtn) friendsBtn.addEventListener('click', () => this.showFriendsModal());
+        const closeProfile = document.getElementById('closeProfileModal');
+        if (closeProfile) closeProfile.addEventListener('click', () => this.hideProfileModal());
+        const closeFriends = document.getElementById('closeFriendsModal');
+        if (closeFriends) closeFriends.addEventListener('click', () => this.hideFriendsModal());
 
-        		// Forms
-		document.getElementById('loginFormElement').addEventListener('submit', (e) => this.handleLogin(e));
-		document.getElementById('registerFormElement').addEventListener('submit', (e) => this.handleRegister(e));
-		document.getElementById('addFriendBtn').addEventListener('click', () => this.addFriend());
-		const addByCodeBtn = document.getElementById('addFriendByCodeBtn');
-		if (addByCodeBtn) addByCodeBtn.addEventListener('click', () => this.addFriendByCode());
+        // Forms
+        const loginForm = document.getElementById('loginFormElement');
+        if (loginForm) loginForm.addEventListener('submit', (e) => this.handleLogin(e));
+        const registerForm = document.getElementById('registerFormElement');
+        if (registerForm) registerForm.addEventListener('submit', (e) => this.handleRegister(e));
+        const addFriendBtn = document.getElementById('addFriendBtn');
+        if (addFriendBtn) addFriendBtn.addEventListener('click', () => this.addFriend());
+        const addByCodeBtn = document.getElementById('addFriendByCodeBtn');
+        if (addByCodeBtn) addByCodeBtn.addEventListener('click', () => this.addFriendByCode());
 
         // Room invitations
-        document.getElementById('acceptInvitationBtn').addEventListener('click', () => this.acceptInvitation());
-        document.getElementById('declineInvitationBtn').addEventListener('click', () => this.declineInvitation());
+        const acceptInvitationBtn = document.getElementById('acceptInvitationBtn');
+        if (acceptInvitationBtn) acceptInvitationBtn.addEventListener('click', () => this.acceptInvitation());
+        const declineInvitationBtn = document.getElementById('declineInvitationBtn');
+        if (declineInvitationBtn) declineInvitationBtn.addEventListener('click', () => this.declineInvitation());
 
         // Click outside modal to close
         window.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal')) {
+            if (e.target && e.target.classList && e.target.classList.contains('modal')) {
                 e.target.style.display = 'none';
             }
         });
@@ -258,11 +274,11 @@ class AuthManager {
 
     setupProfileEditHandlers() {
         const modal = document.getElementById('profileModal');
-        const editBtn = modal.querySelector('#profileEditBtn');
-        const nameEditBtn = modal.querySelector('#displayNameEditBtn');
-        const avatarEditBtn = modal.querySelector('#avatarEditBtn');
-        const nameInput = modal.querySelector('#displayNameInput');
-        const avatarInput = modal.querySelector('#avatarFileInput');
+        const editBtn = modal ? modal.querySelector('#profileEditBtn') : null;
+        const nameEditBtn = modal ? modal.querySelector('#displayNameEditBtn') : null;
+        const avatarEditBtn = modal ? modal.querySelector('#avatarEditBtn') : null;
+        const nameInput = modal ? modal.querySelector('#displayNameInput') : null;
+        const avatarInput = modal ? modal.querySelector('#avatarFileInput') : null;
 
         if (editBtn) {
             editBtn.onclick = () => {
@@ -324,8 +340,8 @@ class AuthManager {
     updateProfileModal(profile) {
         // Clear previous header if any
         const modal = document.getElementById('profileModal');
-        const content = modal.querySelector('.profile-content');
-        const existingHeader = content.querySelector('.profile-header');
+        const content = modal ? modal.querySelector('.profile-content') : null;
+        const existingHeader = content ? content.querySelector('.profile-header') : null;
         if (existingHeader) existingHeader.remove();
         
         // Header section with edit controls
@@ -350,7 +366,7 @@ class AuthManager {
             </div>
         `;
         // Insert header
-        content.insertAdjacentHTML('afterbegin', headerHtml);
+        if (content) content.insertAdjacentHTML('afterbegin', headerHtml);
 
         // Stats
         document.getElementById('profileTotalGames').textContent = profile.totalGames || 0;
@@ -368,7 +384,7 @@ class AuthManager {
         const civilianRate = civilianGames > 0 ? Math.round((profile.civilianWins / civilianGames) * 100) : 0;
         
         // Append detailed rates under stats
-        const stats = modal.querySelector('.profile-stats');
+        const stats = modal ? modal.querySelector('.profile-stats') : null;
         if (stats && !stats.querySelector('.detailed-rates')) {
             const rates = document.createElement('div');
             rates.className = 'detailed-rates';

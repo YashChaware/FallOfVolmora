@@ -3,9 +3,10 @@ const http = require('http');
 const socketIo = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
+require('dotenv').config();
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
-const Database = require('./database-simple');
+const Database = require('./database-mongo');
 const BotManager = require('./bot-manager');
 
 const app = express();
@@ -249,7 +250,7 @@ app.delete('/api/friends/:friendId', async (req, res) => {
         }
 
         const { friendId } = req.params;
-        await db.removeFriend(req.session.userId, parseInt(friendId));
+        		await db.removeFriend(req.session.userId, friendId);
         res.json({ success: true });
     } catch (error) {
         console.error('Remove friend error:', error);

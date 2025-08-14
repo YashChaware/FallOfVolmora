@@ -336,9 +336,9 @@ class AuthManager {
                         <span class="friend-name">${request.display_name}</span>
                         <span class="friend-status">@${request.username}</span>
                     </div>
-                    <div class="friend-actions">
-                        <button class="btn-mini btn-accept" onclick="authManager.acceptFriendRequest(${request.id})">Accept</button>
-                        <button class="btn-mini btn-deny" onclick="authManager.denyFriendRequest(${request.id})">Deny</button>
+                                        <div class="friend-actions">
+                        <button class="btn-mini btn-accept" onclick="authManager.acceptFriendRequest('${request.id}')">Accept</button>
+                        <button class="btn-mini btn-deny" onclick="authManager.denyFriendRequest('${request.id}')">Deny</button>
                     </div>
                 `;
                 requestsList.appendChild(requestItem);
@@ -367,11 +367,11 @@ class AuthManager {
                     </span>
                 </div>
                 <div class="friend-actions">
-                    ${friend.is_online && window.game && window.game.currentRoomCode ? 
-                        `<button class="btn-mini btn-invite" onclick="authManager.inviteFriend(${friend.id})">Invite</button>` : 
-                        ''
-                    }
-                    <button class="btn-mini btn-remove" onclick="authManager.removeFriend(${friend.id})">Remove</button>
+                    						${friend.is_online && window.game && window.game.currentRoomCode ? 
+							`<button class=\"btn-mini btn-invite\" onclick=\"authManager.inviteFriend('` + friend.id + `')\">Invite</button>` : 
+							''
+						}
+						<button class=\"btn-mini btn-remove\" onclick=\"authManager.removeFriend('` + friend.id + `')\">Remove</button>
                 </div>
             `;
             friendsContainer.appendChild(friendItem);

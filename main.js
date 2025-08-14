@@ -342,12 +342,10 @@ class VelmoraGame {
         const startCompleteTutorialBtn = document.getElementById('startCompleteTutorialBtn');
         if (startCompleteTutorialBtn) {
             startCompleteTutorialBtn.addEventListener('click', () => {
-                const modal = document.getElementById('tutorialModal');
-                if (modal) modal.style.display = 'none';
-                this.startSandboxTutorial('mafia', () => this.startSandboxTutorial('doctor', () => this.startSandboxTutorial('detective', () => {
-                    this.finishTutorial();
-                })));
-            });
+				const modal = document.getElementById('tutorialModal');
+				if (modal) modal.style.display = 'none';
+				this.startSandboxSequence(['mafia','doctor','detective','gray_police','manipulator','suicide_bomber']);
+			});
         }
         const startMafiaTutorialBtn = document.getElementById('startMafiaTutorialBtn');
         if (startMafiaTutorialBtn) {
@@ -407,7 +405,7 @@ class VelmoraGame {
         }
         const startGrayTutorialBtn = document.getElementById('startGrayTutorialBtn');
         if (startGrayTutorialBtn) {
-            startGrayTutorialBtn.addEventListener('click', () => this.startGrayPoliceTutorial());
+            startGrayTutorialBtn.addEventListener('click', () => { const modal = document.getElementById('tutorialModal'); if (modal) modal.style.display = 'none'; this.startSandboxTutorial('gray_police'); });
         }
     }
 
@@ -4278,47 +4276,15 @@ class VelmoraGame {
     }
 
     startGrayPoliceTutorial() {
-        const modal = document.getElementById('tutorialModal');
-        if (modal) modal.style.display = 'none';
-        this.tutorial.active = true;
-        this.tutorial.step = 'gray_police';
-        const name = window.authManager?.getDisplayName?.() || 'You';
-        const lobbyInfo = {
-            lobbyName: 'Tutorial: Gray Police',
-            lobbyDescription: 'Choose your allegiance at game start',
-            isPublic: false,
-            maxPlayers: 6,
-            mafiaCount: 2,
-            enableBots: true,
-            botCount: 5,
-            tutorial: { active: true, step: 'gray_police' }
-        };
-        this.socket.emit('createRoom', { playerName: name, lobbyInfo });
-        this.showTutorial('Gray Police: At game start, choose whom to support. Select Black to secretly join Mafia (you can see and talk in mafia chat). Select White to join the town.', {
-            nextText: 'Choose...',
-            showOk: false,
-            onNext: () => this.promptGrayAlignment()
-        });
+        // replaced by sandbox version; keep as no-op
     }
 
     promptGrayAlignment() {
-        const overlay = this.createTutorialOverlay();
-        const container = document.getElementById('tutorialText');
-        container.innerHTML = 'Choose your allegiance:<br><br><button id="chooseBlack" class="btn-secondary">Support Black (Mafia)</button> <button id="chooseWhite" class="btn-secondary">Support White (Town)</button>';
-        const prev = document.getElementById('tutorialPrev'); if (prev) prev.style.display = 'none';
-        const next = document.getElementById('tutorialNext'); if (next) next.style.display = 'none';
-        const ok = document.getElementById('tutorialOk'); if (ok) ok.style.display = 'none';
-        document.getElementById('chooseBlack').onclick = () => this.beginGrayAlignment('black');
-        document.getElementById('chooseWhite').onclick = () => this.beginGrayAlignment('white');
+        // replaced by sandbox version; keep as no-op
     }
 
-    beginGrayAlignment(choice) {
-        if (!this.currentRoomCode) return;
-        // Map choice to role override for server
-        const role = choice === 'black' ? 'black_police' : 'white_police';
-        this.socket.emit('setTutorialStep', { roomCode: this.currentRoomCode, step: role, forceRole: role });
-        this.hideTutorial();
-        this.socket.emit('startGame', this.currentRoomCode);
+    beginGrayAlignment() {
+        // replaced by sandbox version; keep as no-op
     }
 
     startSandboxTutorial(role, onFinish = null) {
@@ -4350,15 +4316,15 @@ class VelmoraGame {
     showSandboxIntro() {
         const role = this.sandbox.role;
         const introMap = {
-            mafia: 'Mafia Tutorial: Perform two night kills. First will be saved by the Doctor (learn about protection), second will eliminate the target.',
-            doctor: 'Doctor Tutorial: Choose a player to protect. Your protection will save them from an attack this night.',
-            detective: 'Detective Tutorial: Investigate two players. First result shows a Mafia, second shows a Civilian.',
-            white_police: 'White Police Tutorial: Support town. You will see an example of coordination and safe voting timing.',
-            black_police: 'Black Police Tutorial: You covertly support mafia. Learn that you can see mafia info and coordinate silently.',
-            gray_police: 'Gray Police Tutorial: Choose your allegiance. (Use the Gray Police dedicated option.)',
-            suicide_bomber: 'Suicide Bomber Tutorial: Learn when your final action triggers and what it does.',
-            manipulator: 'Manipulator Tutorial: Learn how redirecting or altering votes changes outcomes.',
-            civilian: 'Civilian Tutorial: Learn to observe, discuss, and vote effectively with limited info.'
+            mafia: 'Mafia: Eliminate at night and blend in during the day. Doctor protection can prevent your kill.',
+            doctor: 'Doctor: Protect one player at night. Your protection blocks kills for that night.',
+            detective: 'Detective: Investigate at night to learn if someone is Mafia or Civilian.',
+            white_police: 'White Police: Support town with coordination and safe voting.',
+            black_police: 'Black Police: Secretly support Mafia; you can coordinate covertly.',
+            gray_police: 'Gray Police: Choose your allegiance (Mafia or Town) at the start.',
+            suicide_bomber: 'Suicide Bomber: When about to be eliminated, you die and may take others with you, unless they are protected.',
+            manipulator: 'Manipulator: Influence outcome by redirecting votes.',
+            civilian: 'Civilian: Discuss, deduce, and vote wisely with limited information.'
         };
         this.showTutorial(introMap[role] || 'Tutorial', { nextText: 'Start', prevVisible: false, onNext: () => this.renderSandbox() });
     }
@@ -4371,34 +4337,37 @@ class VelmoraGame {
         let title = 'Action';
         let buttons = '';
         if (role === 'mafia') {
-            title = stage === 0 ? 'Night Action: Choose a target (will be saved)' : 'Night Action: Choose a target (will be eliminated)';
+            title = 'Night Action: Choose a target';
             buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Kill ${p.name}</button>`).join(' ');
         } else if (role === 'doctor') {
             title = 'Night Action: Choose someone to protect';
             buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Protect ${p.name}</button>`).join(' ');
         } else if (role === 'detective') {
-            title = stage === 0 ? 'Investigate: Choose a target (first will reveal Mafia)' : 'Investigate: Choose a target (second will reveal Civilian)';
+            title = 'Investigate: Choose a target';
             buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Investigate ${p.name}</button>`).join(' ');
         } else if (role === 'white_police') {
             title = 'Day Coordination: Identify a safe vote. (Example only — no real elimination.)';
             buttons = others.filter(p => p.alive).map(p => `<button class=\"btn-secondary sandbox-target\" data-id=\"${p.id}\">Mark ${p.name} as suspicious</button>`).join(' ');
         } else if (role === 'black_police') {
             title = 'Covert Support: Identify the mafia ally and send a silent signal.';
-            buttons = `<button class="btn-secondary sandbox-target" data-id="bot2">Signal AI Beta (Mafia)</button>`;
+            buttons = `<button class=\"btn-secondary sandbox-target\" data-id=\"bot2\">Signal AI Beta (Mafia)</button>`;
+        } else if (role === 'gray_police') {
+            title = 'Choose Allegiance';
+            buttons = `<button class=\"btn-secondary sandbox-target\" data-id=\"choose_black\">Support Black (Mafia)</button> <button class=\"btn-secondary sandbox-target\" data-id=\"choose_white\">Support White (Town)</button>`;
         } else if (role === 'suicide_bomber') {
-            title = stage === 0 ? 'When you are about to be eliminated, you may choose targets. Simulate trigger.' : 'Choose a target to take down with you.';
-            buttons = stage === 0 ? `<button class="btn-secondary sandbox-target" data-id="trigger">Simulate Elimination</button>` : others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Take ${p.name}</button>`).join(' ');
+            title = 'When you are about to be eliminated, simulate trigger';
+            buttons = `<button class=\"btn-secondary sandbox-target\" data-id=\"trigger\">Simulate Elimination</button>`;
         } else if (role === 'manipulator') {
             title = 'Vote Manipulation: Choose who to redirect a vote to (demo only).';
             buttons = others.filter(p => p.alive).map(p => `<button class=\"btn-secondary sandbox-target\" data-id=\"${p.id}\">Redirect vote to ${p.name}</button>`).join(' ');
         } else if (role === 'civilian') {
             title = 'Voting Basics: Mark a suspect (demo only)';
-            buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Vote ${p.name}</button>`).join(' ');
+            buttons = others.filter(p => p.alive).map(p => `<button class=\"btn-secondary sandbox-target\" data-id=\"${p.id}\">Vote ${p.name}</button>`).join(' ');
         }
         text.innerHTML = `
             <strong>${title}</strong><br><br>
             ${statusLines}<br><br>
-            <div id="sandboxButtons">${buttons}</div>
+            <div id=\"sandboxButtons\">${buttons}</div>
         `;
         const next = document.getElementById('tutorialNext'); if (next) next.style.display = 'none';
         const prev = document.getElementById('tutorialPrev'); if (prev) prev.style.display = 'none';
@@ -4407,37 +4376,32 @@ class VelmoraGame {
     }
 
     handleSandboxAction(targetId) {
-        const { role, players, stage } = this.sandbox;
+        const { role, players } = this.sandbox;
         const target = players.find(p => p.id === targetId);
         if (role === 'mafia') {
-            if (stage === 0) {
-                this.showTutorial(`You attempted to eliminate ${target.name}, but they were protected by the Doctor. No one died tonight.`, { nextText: 'Continue', showOk: false, onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); }});
-            } else {
-                if (target && target.alive) target.alive = false;
-                this.showTutorial(`${target?.name || 'Target'} was eliminated.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
-            }
+            this.showTutorial(`You attempted to eliminate ${target?.name || 'someone'}. If protected by the Doctor, the kill will be blocked.`, { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
         } else if (role === 'doctor') {
-            this.showTutorial(`You protected ${target?.name || 'someone'}. If they were attacked tonight, your protection would save them.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            this.showTutorial(`You protected ${target?.name || 'someone'}. If attacked tonight, your protection would save them.`, { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
         } else if (role === 'detective') {
-            if (stage === 0) {
-                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Mafia.`, { nextText: 'Continue', showOk: false, onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); } });
-            } else {
-                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Civilian.`, { nextText: 'Finish', showOk: false, onNext: () => this.finishSandbox() });
-            }
+            this.showTutorial(`Investigation result: ${target?.name || 'Target'} is ${target?.role === 'mafia' ? 'Mafia' : 'Civilian'}.`, { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
         } else if (role === 'white_police') {
-            this.showTutorial(`You marked ${target?.name || 'someone'} as suspicious. In real games, coordinate and avoid rushing votes.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            this.showTutorial(`You marked ${target?.name || 'someone'} as suspicious. Coordinate and avoid rushing votes.`, { nextText: 'OK', onNext: () => this.finishSandbox() });
         } else if (role === 'black_police') {
-            this.showTutorial(`You signaled your mafia ally (AI Beta). In real games, you can see mafia info and coordinate covertly.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            this.showTutorial(`You signaled your mafia ally (AI Beta). In real games, you can see mafia info and coordinate covertly.`, { nextText: 'OK', onNext: () => this.finishSandbox() });
+        } else if (role === 'gray_police') {
+            if (targetId === 'choose_black') {
+                this.showTutorial('You chose to support Black (Mafia). You can observe mafia coordination covertly.', { nextText: 'OK', onNext: () => this.finishSandbox() });
+            } else if (targetId === 'choose_white') {
+                this.showTutorial('You chose to support White (Town). Coordinate and help the town win.', { nextText: 'OK', onNext: () => this.finishSandbox() });
+            }
         } else if (role === 'suicide_bomber') {
             if (targetId === 'trigger') {
-                this.showTutorial('You triggered your final act. You die. The Doctor protected your target, so they survive.', { nextText: 'Continue', showOk: false, onNext: () => { this.showTutorial('That is how Doctor protection interacts with Suicide Bomber. ', { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() }); } });
-            } else {
-                this.showTutorial(`You took ${target?.name || 'someone'} down with you.`, { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
+                this.showTutorial('You triggered your final act. You die. The Doctor protected your target, so they survive.', { nextText: 'OK', showOk: false, onNext: () => this.finishSandbox() });
             }
         } else if (role === 'manipulator') {
-            this.showTutorial(`You redirected the vote to ${target?.name || 'someone'}. In real games, this affects tallying.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            this.showTutorial(`You redirected the vote to ${target?.name || 'someone'}. In real games, this affects tallying.`, { nextText: 'OK', onNext: () => this.finishSandbox() });
         } else if (role === 'civilian') {
-            this.showTutorial(`You voted ${target?.name || 'someone'}. In real games, majority decides and discussion matters.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            this.showTutorial(`You voted ${target?.name || 'someone'}. In real games, majority decides and discussion matters.`, { nextText: 'OK', onNext: () => this.finishSandbox() });
         }
     }
 
@@ -4449,6 +4413,12 @@ class VelmoraGame {
         }
         this.finishTutorial();
     }
+
+	startSandboxSequence(sequence) {
+		if (!Array.isArray(sequence) || sequence.length === 0) { this.finishTutorial(); return; }
+		const [current, ...rest] = sequence;
+		this.startSandboxTutorial(current, () => this.startSandboxSequence(rest));
+	}
 }
 
 // Initialize the game when the DOM is loaded

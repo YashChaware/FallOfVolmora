@@ -83,14 +83,14 @@ class AuthManager {
         const userInfo = document.getElementById('userInfo');
         const usernameDisplay = document.getElementById('usernameDisplay');
 
-        if (this.isAuthenticated) {
-            authButtons.style.display = 'none';
-            userInfo.style.display = 'flex';
-            usernameDisplay.textContent = this.currentUser.displayName || this.currentUser.username;
-        } else {
-            authButtons.style.display = 'flex';
-            userInfo.style.display = 'none';
-        }
+        		if (this.isAuthenticated) {
+			authButtons.style.display = 'none';
+			userInfo.style.display = 'none';
+			usernameDisplay.textContent = this.currentUser.displayName || this.currentUser.username;
+		} else {
+			authButtons.style.display = 'flex';
+			userInfo.style.display = 'none';
+		}
 
         // Update hamburger menu when auth state changes
         if (window.hamburgerMenu) {
@@ -575,4 +575,5 @@ class AuthManager {
 }
 
 // Initialize the auth manager
-const authManager = new AuthManager(); 
+const authManager = new AuthManager();
+window.authManager = authManager; 

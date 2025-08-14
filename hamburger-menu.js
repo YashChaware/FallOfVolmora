@@ -73,11 +73,20 @@ class HamburgerMenu {
             this.close();
         });
 
-        // Logout
+        // Logout (standalone section)
         document.getElementById('logoutDropdownBtn').addEventListener('click', () => {
             this.handleLogoutClick();
             this.close();
         });
+
+        // Logout inside auth section when authenticated
+        const logoutInAuth = document.getElementById('logoutInAuthDropdownBtn');
+        if (logoutInAuth) {
+            logoutInAuth.addEventListener('click', () => {
+                this.handleLogoutClick();
+                this.close();
+            });
+        }
     }
 
     toggle() {
@@ -114,23 +123,32 @@ class HamburgerMenu {
         const authSection = document.getElementById('authSectionDropdown');
         const logoutSection = document.getElementById('logoutSectionDropdown');
         const usernameDisplay = document.getElementById('userDisplayNameDropdown');
+        const loginItem = document.getElementById('loginDropdownBtn');
+        const registerItem = document.getElementById('registerDropdownBtn');
+        const logoutInAuth = document.getElementById('logoutInAuthDropdownBtn');
 
         if (isAuthenticated) {
-            // Show user info and logout, hide auth buttons
+            // Show user info; hide standalone logout section
             userSection.style.display = 'block';
-            logoutSection.style.display = 'block';
-            authSection.style.display = 'none';
+            logoutSection.style.display = 'none';
+            authSection.style.display = 'block';
+            if (loginItem) loginItem.style.display = 'none';
+            if (registerItem) registerItem.style.display = 'none';
+            if (logoutInAuth) logoutInAuth.style.display = 'block';
             
             // Update username display
-            const user = window.authManager.user;
+            const user = window.authManager.currentUser;
             if (user && usernameDisplay) {
                 usernameDisplay.textContent = user.displayName || user.username || 'User';
             }
         } else {
-            // Show auth buttons, hide user info
+            // Show auth options
             userSection.style.display = 'none';
             logoutSection.style.display = 'none';
             authSection.style.display = 'block';
+            if (loginItem) loginItem.style.display = 'block';
+            if (registerItem) registerItem.style.display = 'block';
+            if (logoutInAuth) logoutInAuth.style.display = 'none';
         }
     }
 

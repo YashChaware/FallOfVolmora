@@ -344,24 +344,62 @@ class VelmoraGame {
             startCompleteTutorialBtn.addEventListener('click', () => {
                 const modal = document.getElementById('tutorialModal');
                 if (modal) modal.style.display = 'none';
-                this.startTutorial();
+                this.startSandboxTutorial('mafia', () => this.startSandboxTutorial('doctor', () => this.startSandboxTutorial('detective', () => {
+                    this.finishTutorial();
+                })));
             });
         }
         const startMafiaTutorialBtn = document.getElementById('startMafiaTutorialBtn');
         if (startMafiaTutorialBtn) {
-            startMafiaTutorialBtn.addEventListener('click', () => this.startRoleTutorial('mafia'));
+            startMafiaTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal');
+                if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('mafia');
+            });
         }
         const startDoctorTutorialBtn = document.getElementById('startDoctorTutorialBtn');
         if (startDoctorTutorialBtn) {
-            startDoctorTutorialBtn.addEventListener('click', () => this.startRoleTutorial('doctor'));
+            startDoctorTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal');
+                if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('doctor');
+            });
         }
         const startDetectiveTutorialBtn = document.getElementById('startDetectiveTutorialBtn');
         if (startDetectiveTutorialBtn) {
-            startDetectiveTutorialBtn.addEventListener('click', () => this.startRoleTutorial('detective'));
+            startDetectiveTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal');
+                if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('detective');
+            });
         }
         const startPoliceTutorialBtn = document.getElementById('startPoliceTutorialBtn');
         if (startPoliceTutorialBtn) {
-            startPoliceTutorialBtn.addEventListener('click', () => this.startRoleTutorial('white_police'));
+            startPoliceTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal'); if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('white_police');
+            });
+        }
+        const startBlackPoliceTutorialBtn = document.getElementById('startBlackPoliceTutorialBtn');
+        if (startBlackPoliceTutorialBtn) {
+            startBlackPoliceTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal'); if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('black_police');
+            });
+        }
+        const startManipulatorTutorialBtn = document.getElementById('startManipulatorTutorialBtn');
+        if (startManipulatorTutorialBtn) {
+            startManipulatorTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal'); if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('manipulator');
+            });
+        }
+        const startCivilianTutorialBtn = document.getElementById('startCivilianTutorialBtn');
+        if (startCivilianTutorialBtn) {
+            startCivilianTutorialBtn.addEventListener('click', () => {
+                const modal = document.getElementById('tutorialModal'); if (modal) modal.style.display = 'none';
+                this.startSandboxTutorial('civilian');
+            });
         }
         const startSuicideTutorialBtn = document.getElementById('startSuicideTutorialBtn');
         if (startSuicideTutorialBtn) {
@@ -4280,6 +4318,130 @@ class VelmoraGame {
         this.socket.emit('setTutorialStep', { roomCode: this.currentRoomCode, step: role, forceRole: role });
         this.hideTutorial();
         this.socket.emit('startGame', this.currentRoomCode);
+    }
+
+    startSandboxTutorial(role, onFinish = null) {
+        this.tutorial.active = true;
+        this.tutorial.step = role;
+        const mafiaTarget = role === 'detective' ? 'mafia' : 'civilian';
+        const policeRole = role === 'white_police' ? 'white_police' : role === 'black_police' ? 'black_police' : role;
+        this.sandbox = {
+            role: policeRole,
+            players: [
+                { id: 'you', name: 'You', role: policeRole, alive: true },
+                { id: 'bot1', name: 'AI Alpha', role: 'civilian', alive: true },
+                { id: 'bot2', name: 'AI Beta', role: role === 'detective' || role === 'black_police' || role === 'manipulator' || role === 'suicide_bomber' ? 'mafia' : 'civilian', alive: true },
+                { id: 'bot3', name: 'AI Gamma', role: 'civilian', alive: true }
+            ],
+            stage: 0,
+            onFinish
+        };
+        this.showSandboxIntro();
+    }
+
+    showSandboxIntro() {
+        const role = this.sandbox.role;
+        const introMap = {
+            mafia: 'Mafia Tutorial: Perform two night kills. First will be saved by the Doctor (learn about protection), second will eliminate the target.',
+            doctor: 'Doctor Tutorial: Choose a player to protect. Your protection will save them from an attack this night.',
+            detective: 'Detective Tutorial: Investigate two players. First result shows a Mafia, second shows a Civilian.',
+            white_police: 'White Police Tutorial: Support town. You will see an example of coordination and safe voting timing.',
+            black_police: 'Black Police Tutorial: You covertly support mafia. Learn that you can see mafia info and coordinate silently.',
+            gray_police: 'Gray Police Tutorial: Choose your allegiance. (Use the Gray Police dedicated option.)',
+            suicide_bomber: 'Suicide Bomber Tutorial: Learn when your final action triggers and what it does.',
+            manipulator: 'Manipulator Tutorial: Learn how redirecting or altering votes changes outcomes.',
+            civilian: 'Civilian Tutorial: Learn to observe, discuss, and vote effectively with limited info.'
+        };
+        this.showTutorial(introMap[role] || 'Tutorial', { nextText: 'Start', prevVisible: false, onNext: () => this.renderSandbox() });
+    }
+
+    renderSandbox() {
+        const { role, players, stage } = this.sandbox;
+        const text = document.getElementById('tutorialText');
+        const others = players.filter(p => p.id !== 'you');
+        const statusLines = others.map(p => `${p.name} — ${p.alive ? 'Alive' : 'Eliminated'}`).join('<br>');
+        let title = 'Action';
+        let buttons = '';
+        if (role === 'mafia') {
+            title = stage === 0 ? 'Night Action: Choose a target (will be saved)' : 'Night Action: Choose a target (will be eliminated)';
+            buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Kill ${p.name}</button>`).join(' ');
+        } else if (role === 'doctor') {
+            title = 'Night Action: Choose someone to protect';
+            buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Protect ${p.name}</button>`).join(' ');
+        } else if (role === 'detective') {
+            title = stage === 0 ? 'Investigate: Choose AI Beta (Mafia)' : 'Investigate: Choose AI Alpha (Civilian)';
+            const target = stage === 0 ? 'bot2' : 'bot1';
+            const label = stage === 0 ? 'Investigate AI Beta' : 'Investigate AI Alpha';
+            buttons = `<button class="btn-secondary sandbox-target" data-id="${target}">${label}</button>`;
+        } else if (role === 'white_police') {
+            title = 'Day Coordination: Identify a safe vote. (Example only — no real elimination.)';
+            buttons = others.filter(p => p.alive).map(p => `<button class=\"btn-secondary sandbox-target\" data-id=\"${p.id}\">Mark ${p.name} as suspicious</button>`).join(' ');
+        } else if (role === 'black_police') {
+            title = 'Covert Support: Identify the mafia ally and send a silent signal.';
+            buttons = `<button class="btn-secondary sandbox-target" data-id="bot2">Signal AI Beta (Mafia)</button>`;
+        } else if (role === 'suicide_bomber') {
+            title = stage === 0 ? 'When you are about to be eliminated, you may choose targets. Simulate trigger.' : 'Choose a target to take down with you.';
+            buttons = stage === 0 ? `<button class="btn-secondary sandbox-target" data-id="trigger">Simulate Elimination</button>` : others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Take ${p.name}</button>`).join(' ');
+        } else if (role === 'manipulator') {
+            title = 'Vote Manipulation: Choose who to redirect a vote to (demo only).';
+            buttons = others.filter(p => p.alive).map(p => `<button class=\"btn-secondary sandbox-target\" data-id=\"${p.id}\">Redirect vote to ${p.name}</button>`).join(' ');
+        } else if (role === 'civilian') {
+            title = 'Voting Basics: Mark a suspect (demo only)';
+            buttons = others.filter(p => p.alive).map(p => `<button class="btn-secondary sandbox-target" data-id="${p.id}">Vote ${p.name}</button>`).join(' ');
+        }
+        text.innerHTML = `
+            <strong>${title}</strong><br><br>
+            ${statusLines}<br><br>
+            <div id="sandboxButtons">${buttons}</div>
+        `;
+        const next = document.getElementById('tutorialNext'); if (next) next.style.display = 'none';
+        const prev = document.getElementById('tutorialPrev'); if (prev) prev.style.display = 'none';
+        const ok = document.getElementById('tutorialOk'); if (ok) ok.style.display = 'none';
+        Array.from(document.querySelectorAll('.sandbox-target')).forEach(btn => { btn.onclick = () => this.handleSandboxAction(btn.getAttribute('data-id')); });
+    }
+
+    handleSandboxAction(targetId) {
+        const { role, players, stage } = this.sandbox;
+        const target = players.find(p => p.id === targetId);
+        if (role === 'mafia') {
+            if (stage === 0) {
+                this.showTutorial(`You attempted to eliminate ${target.name}, but they were protected by the Doctor. No one died tonight.`, { nextText: 'Continue', onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); }});
+            } else {
+                if (target && target.alive) target.alive = false;
+                this.showTutorial(`${target?.name || 'Target'} was eliminated.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            }
+        } else if (role === 'doctor') {
+            this.showTutorial(`You protected ${target?.name || 'someone'}. If they were attacked tonight, your protection would save them.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+        } else if (role === 'detective') {
+            if (stage === 0) {
+                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Mafia.`, { nextText: 'Continue', onNext: () => { this.sandbox.stage = 1; this.renderSandbox(); } });
+            } else {
+                this.showTutorial(`Investigation result: ${target?.name || 'Target'} is Civilian.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            }
+        } else if (role === 'white_police') {
+            this.showTutorial(`You marked ${target?.name || 'someone'} as suspicious. In real games, coordinate and avoid rushing votes.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+        } else if (role === 'black_police') {
+            this.showTutorial(`You signaled your mafia ally (AI Beta). In real games, you can see mafia info and coordinate covertly.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+        } else if (role === 'suicide_bomber') {
+            if (targetId === 'trigger') {
+                this.sandbox.stage = 1; this.renderSandbox();
+            } else {
+                this.showTutorial(`You took ${target?.name || 'someone'} down with you. Doctor protection can still prevent their death.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+            }
+        } else if (role === 'manipulator') {
+            this.showTutorial(`You redirected the vote to ${target?.name || 'someone'}. In real games, this affects tallying.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+        } else if (role === 'civilian') {
+            this.showTutorial(`You voted ${target?.name || 'someone'}. In real games, majority decides and discussion matters.`, { nextText: 'Finish', onNext: () => this.finishSandbox() });
+        }
+    }
+
+    finishSandbox() {
+        this.hideTutorial();
+        if (typeof this.sandbox.onFinish === 'function') {
+            const cb = this.sandbox.onFinish; this.sandbox.onFinish = null; cb();
+            return;
+        }
+        this.finishTutorial();
     }
 }
 

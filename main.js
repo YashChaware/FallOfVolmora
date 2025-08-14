@@ -4155,7 +4155,6 @@ class VelmoraGame {
             <div id="tutorialText" style="line-height:1.4;margin-bottom:12px;"></div>
             <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
                 <button id="tutorialPrev" class="btn-secondary">Back</button>
-                <button id="tutorialOk" class="btn-secondary">OK</button>
                 <button id="tutorialNext" class="btn-primary">Next</button>
             </div>`;
         overlay.appendChild(card);
@@ -4164,7 +4163,7 @@ class VelmoraGame {
         return overlay;
     }
 
-    showTutorial(text, { nextText = 'Next', prevVisible = false, onNext = null, onPrev = null, showOk = true } = {}) {
+    showTutorial(text, { nextText = 'Next', prevVisible = false, onNext = null, onPrev = null, showOk = false } = {}) {
         const overlay = this.createTutorialOverlay();
         overlay.style.display = 'flex';
         document.getElementById('tutorialText').innerHTML = text;
@@ -4175,17 +4174,7 @@ class VelmoraGame {
         next.textContent = nextText;
         next.onclick = () => onNext && onNext();
         prev.onclick = () => onPrev && onPrev();
-        const ok = document.getElementById('tutorialOk');
-        if (ok) {
-            ok.style.display = showOk ? 'inline-block' : 'none';
-            ok.onclick = () => {
-                this.hideTutorial();
-                // If running a full tutorial sequence, OK skips to the next tutorial role
-                if (this.tutorial.sequence && this.tutorial.sequence.length > 0) {
-                    this._advanceSandboxSequence();
-                }
-            };
-        }
+        
     }
 
     hideTutorial() {

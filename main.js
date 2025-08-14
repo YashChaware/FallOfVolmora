@@ -128,7 +128,8 @@ class VelmoraGame {
         this.tutorial = {
             active: false,
             step: 0,
-            overlay: null
+            overlay: null,
+            sequence: null
         };
     }
 
@@ -401,7 +402,7 @@ class VelmoraGame {
         }
         const startSuicideTutorialBtn = document.getElementById('startSuicideTutorialBtn');
         if (startSuicideTutorialBtn) {
-            startSuicideTutorialBtn.addEventListener('click', () => this.startRoleTutorial('suicide_bomber'));
+            startSuicideTutorialBtn.addEventListener('click', () => { const modal = document.getElementById('tutorialModal'); if (modal) modal.style.display = 'none'; this.startSandboxTutorial('suicide_bomber'); });
         }
         const startGrayTutorialBtn = document.getElementById('startGrayTutorialBtn');
         if (startGrayTutorialBtn) {
@@ -4177,7 +4178,13 @@ class VelmoraGame {
         const ok = document.getElementById('tutorialOk');
         if (ok) {
             ok.style.display = showOk ? 'inline-block' : 'none';
-            ok.onclick = () => this.hideTutorial();
+            ok.onclick = () => {
+                this.hideTutorial();
+                // If running a full tutorial sequence, OK skips to the next tutorial role
+                if (this.tutorial.sequence && this.tutorial.sequence.length > 0) {
+                    this._advanceSandboxSequence();
+                }
+            };
         }
     }
 
@@ -4416,8 +4423,16 @@ class VelmoraGame {
 
 	startSandboxSequence(sequence) {
 		if (!Array.isArray(sequence) || sequence.length === 0) { this.finishTutorial(); return; }
-		const [current, ...rest] = sequence;
-		this.startSandboxTutorial(current, () => this.startSandboxSequence(rest));
+		this.tutorial.sequence = sequence.slice();
+		this._advanceSandboxSequence();
+	}
+
+	_advanceSandboxSequence() {
+		const seq = this.tutorial.sequence || [];
+		if (seq.length === 0) { this.tutorial.sequence = null; this.finishTutorial(); return; }
+		const current = seq.shift();
+		this.tutorial.sequence = seq;
+		this.startSandboxTutorial(current, () => this._advanceSandboxSequence());
 	}
 }
 

@@ -3892,4 +3892,97 @@ body.voting-phase {
         max-width: 95%;
         padding: 1.5rem;
     }
-} 
+}
+
+/* Rotate Overlay */
+#rotateOverlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0,0,0,0.9);
+	display: none;
+	align-items: center;
+	justify-content: center;
+	z-index: 10000;
+}
+#rotateOverlay .rotate-card {
+	background: rgba(20,20,30,0.95);
+	border: 1px solid #4ecdc4;
+	border-radius: 12px;
+	padding: 16px;
+	max-width: 420px;
+	margin: 16px;
+	text-align: center;
+}
+#rotateOverlay .rotate-emoji {
+	font-size: 2rem;
+	margin-bottom: 8px;
+}
+
+/* Prefer landscape on mobile: show overlay when portrait */
+@media (orientation: portrait) and (max-width: 900px) {
+	#rotateOverlay { display: flex; }
+	/* Dim main app */
+	#gameScreen, #lobbyScreen, #gameOverScreen { filter: blur(2px); pointer-events: none; user-select: none; }
+}
+
+/* Landscape adjustments already exist; ensure full-bleed */
+@media (orientation: landscape) and (max-width: 900px) {
+	#gameScreen { height: 100vh; }
+}
+
+/* Landscape small-screen overrides: keep desktop-like UI */
+@media (orientation: landscape) and (max-width: 900px) {
+	/* Restore desktop grid for game screen */
+	#gameScreen {
+		grid-template-areas: 
+			"status status"
+			"canvas chat";
+		grid-template-rows: auto 1fr;
+		grid-template-columns: 1fr 360px;
+	}
+	/* Chat pane on side like desktop */
+	.chat-window {
+		border-left: 3px solid #4ecdc4;
+		border-top: none;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+	}
+	.chat-window-content {
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 0.75rem;
+	}
+	/* Status bar row layout */
+	.game-status-bar {
+		flex-direction: row;
+		gap: 0.5rem;
+		padding: 0 1rem 10px 1rem;
+		min-height: 10px;
+		text-align: left;
+	}
+	.phase-timer-container { order: 0; gap: 0.25rem; }
+	.room-info { flex-direction: row; justify-content: flex-start; gap: 0.25rem; }
+	/* Font sizing closer to desktop */
+	.phase-indicator { font-size: 0.6rem; letter-spacing: 0.5px; padding: 0.08rem 0.25rem; }
+	.timer { font-size: 0.7rem; }
+	.day-counter { font-size: 0.6rem; }
+	.room-code { font-size: 0.9rem; }
+	.copy-code-btn, .close-game-btn { font-size: 0.55rem; padding: 0.02rem 0.15rem; }
+	.current-role { font-size: 0.8rem; padding: 0.2rem 0.5rem; }
+	/* Players/table sizing */
+	.round-table-container { width: 300px; height: 300px; }
+	.player-seat { width: 48px; height: 48px; }
+	.player-name { font-size: 0.6rem; max-width: 44px; }
+	.table-logo { font-size: 1.4rem; }
+	.table-text { font-size: 0.9rem; }
+	.table-timer { font-size: 0.8rem; }
+	/* Lobby/public list keep multi-column */
+	.lobbies-list { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+	/* Create lobby form restore two columns */
+	.create-lobby-form { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto auto; gap: 1.5rem; }
+	.create-lobby-form .form-section:nth-child(1) { grid-column: 1; grid-row: 1; }
+	.create-lobby-form .form-section:nth-child(2) { grid-column: 2; grid-row: 1; }
+	.create-lobby-form .form-section:nth-child(3) { grid-column: 1 / -1; grid-row: 2; max-width: 800px; justify-self: center; }
+	.create-lobby-form .form-actions { grid-column: 1 / -1; grid-row: 3; }
+	/* Hamburger dropdown width */
+	.hamburger-dropdown { min-width: 220px; max-width: 280px; }
+}

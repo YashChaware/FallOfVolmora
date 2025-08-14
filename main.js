@@ -139,6 +139,28 @@ class VelmoraGame {
         this.setupAudioControls();
         this.connectToServer();
         this.startGameLoop();
+        this.initOrientationHelper();
+    }
+
+    initOrientationHelper() {
+        const overlay = document.getElementById('rotateOverlay');
+        const tryBtn = document.getElementById('tryRotateBtn');
+        if (tryBtn) {
+            tryBtn.onclick = async () => {
+                try {
+                    if (screen.orientation && screen.orientation.lock) {
+                        await screen.orientation.lock('landscape');
+                    }
+                } catch {}
+            };
+        }
+        const onResize = () => {
+            const portrait = window.matchMedia('(orientation: portrait)').matches;
+            if (overlay) overlay.style.display = portrait && window.innerWidth < 900 ? 'flex' : 'none';
+        };
+        window.addEventListener('resize', onResize);
+        window.addEventListener('orientationchange', onResize);
+        setTimeout(onResize, 0);
     }
 
     setupAudioControls() {

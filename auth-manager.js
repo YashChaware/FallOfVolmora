@@ -266,7 +266,8 @@ class AuthManager {
     async showProfileModal(otherUserId = null, fallbackName = '') {
         try {
             let profile;
-            if (otherUserId) {
+            let isOther = !!otherUserId;
+            if (isOther) {
                 const res = await fetch(`/api/profile/${otherUserId}/public`);
                 if (!res.ok) { this.showNotification('Failed to load profile', 'error'); return; }
                 profile = await res.json();
@@ -286,11 +287,95 @@ class AuthManager {
                 if (!response.ok) { this.showNotification('Failed to load profile', 'error'); return; }
                 profile = await response.json();
             }
+            
+            // Build a view-only header for other users, else use full editor
+            const modal = document.getElementById('profileModal');
+            const content = modal ? modal.querySelector('.profile-content') : null;
+            if (content) {
+                // Clear header area
+                const existingHeader = content.querySelector('.profile-header');
+                if (existingHeader) existingHeader.remove();
+                const header = document.createElement('div');
+                header.className = 'profile-header';
+                header.style.display = 'flex';
+                header.style.alignItems = 'center';
+                header.style.gap = '12px';
+                header.style.marginBottom = '12px';
+                const avatarUrl = profile.avatarUrl || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(profile.displayName || 'User'));
+                header.innerHTML = `
+                    <div style="position:relative;">
+                        <img id="profileAvatarImg" src="${avatarUrl}" alt="Avatar" style="width:56px; height:56px; border-radius:50%; object-fit:cover; cursor:${isOther ? 'pointer' : 'default'};">
+                    </div>
+                    <div>
+                        <div><strong id="profileDisplayNameText">${profile.displayName || ''}</strong> ${!isOther ? `<span style=\"color:#888\">(@${profile.username})</span>` : ''}</div>
+                    </div>
+                    <div id="profileHeaderActions" style="margin-left:auto; display:flex; gap:8px;"></div>
+                `;
+                content.insertAdjacentElement('afterbegin', header);
+                
+                // Header actions: for other users, show Message/Add Friend; for self, show Edit
+                const actions = header.querySelector('#profileHeaderActions');
+                if (isOther) {
+                    const friendsData = await fetch('/api/friends').then(r => r.ok ? r.json() : { friends: [], friendRequests: [] }).catch(() => ({ friends: [], friendRequests: [] }));
+                    const isFriend = (friendsData.friends || []).some(f => f.id === otherUserId);
+                    const btn = document.createElement('button');
+                    btn.className = 'btn-mini';
+                    btn.textContent = isFriend ? 'Message' : 'Add Friend';
+                    btn.onclick = async () => {
+                        if (isFriend) {
+                            // Open Friends modal and prefill search
+                            if (window.authManager) {
+                                this.showFriendsModal();
+                                setTimeout(() => {
+                                    const input = document.getElementById('friendSearchInput');
+                                    if (input) {
+                                        input.value = profile.displayName || '';
+                                        input.dispatchEvent(new Event('input'));
+                                    }
+                                }, 50);
+                            }
+                        } else {
+                            // Try to add by id
+                            try {
+                                const res = await fetch('/api/profile/' + otherUserId + '/friend-request', { method: 'POST' });
+                                if (res.ok) this.showNotification('Friend request sent', 'success');
+                                else { const d = await res.json(); this.showNotification(d.error || 'Failed to send request', 'error'); }
+                            } catch { this.showNotification('Failed to send request', 'error'); }
+                        }
+                    };
+                    actions.appendChild(btn);
+                    // Disable edit controls for other users
+                    content.querySelectorAll('.profile-edit-controls').forEach(el => el.style.display = 'none');
+                } else {
+                    const editBtn = document.createElement('button');
+                    editBtn.id = 'profileEditBtn';
+                    editBtn.className = 'btn-mini';
+                    editBtn.textContent = 'Edit Profile';
+                    actions.appendChild(editBtn);
+                }
+                // Avatar click to view-only enlarge
+                if (isOther) {
+                    const img = header.querySelector('#profileAvatarImg');
+                    img.onclick = () => {
+                        let viewer = document.getElementById('imageViewerModal');
+                        if (!viewer) {
+                            viewer = document.createElement('div');
+                            viewer.id = 'imageViewerModal';
+                            viewer.className = 'modal';
+                            viewer.innerHTML = `<div class=\"modal-content\" style=\"max-width:90vw;\"><span class=\"close\" id=\"closeImageViewer\">&times;</span><img id=\"viewerImg\" src=\"${avatarUrl}\" style=\"max-width:100%; border-radius:12px;\"></div>`;
+                            document.body.appendChild(viewer);
+                            document.getElementById('closeImageViewer').onclick = () => viewer.style.display = 'none';
+                        }
+                        document.getElementById('viewerImg').src = avatarUrl;
+                        viewer.style.display = 'flex';
+                    };
+                }
+            }
+            
+            // For other users, don’t wire edit handlers or history
             this.updateProfileModal(profile);
-            // Wire edit actions (will mostly be ignored for other users)
-            this.setupProfileEditHandlers();
-            // Only load game history for self
-            if (!otherUserId) {
+            if (!isOther) {
+                this.setupProfileEditHandlers();
                 const historyResponse = await fetch('/api/game-history');
                 if (historyResponse.ok) {
                     const history = await historyResponse.json();

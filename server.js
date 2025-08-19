@@ -3056,7 +3056,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 		// Create token
 		const token = crypto.randomBytes(24).toString('hex');
 		const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-		await db.User.findByIdAndUpdate(user.id, { reset_token: token, reset_expires: expires });
+		await db.User.findByIdAndUpdate(user._id, { reset_token: token, reset_expires: expires });
 		// Return reset link for now (in production, email it)
 		const baseUrl = req.headers.origin || `${req.protocol}://${req.get('host')}`;
 		const link = `${baseUrl}/?action=reset&token=${token}`;

@@ -263,27 +263,41 @@ class AuthManager {
         }
     }
 
-    async showProfileModal() {
+    async showProfileModal(otherUserId = null, fallbackName = '') {
         try {
-            // Fetch fresh profile data
-            const response = await fetch('/api/profile');
-            if (response.ok) {
-                const profile = await response.json();
-                this.updateProfileModal(profile);
-                // Wire edit actions
-                this.setupProfileEditHandlers();
-                
-                // Fetch game history
+            let profile;
+            if (otherUserId) {
+                const res = await fetch(`/api/profile/${otherUserId}/public`);
+                if (!res.ok) { this.showNotification('Failed to load profile', 'error'); return; }
+                profile = await res.json();
+                // Normalize field names to what updateProfileModal expects
+                profile.displayName = profile.displayName || profile.display_name || fallbackName;
+                profile.username = profile.username || '';
+                profile.avatarUrl = profile.avatarUrl || profile.avatar_url || null;
+                profile.totalGames = profile.totalGames ?? profile.total_games ?? 0;
+                profile.totalWins = profile.totalWins ?? profile.total_wins ?? 0;
+                profile.mafiaWins = profile.mafiaWins ?? profile.mafia_wins ?? 0;
+                profile.civilianWins = profile.civilianWins ?? profile.civilian_wins ?? 0;
+                profile.mafiaGames = profile.mafiaGames ?? profile.mafia_games ?? 0;
+                profile.civilianGames = profile.civilianGames ?? profile.civilian_games ?? 0;
+            } else {
+                // Fetch own profile
+                const response = await fetch('/api/profile');
+                if (!response.ok) { this.showNotification('Failed to load profile', 'error'); return; }
+                profile = await response.json();
+            }
+            this.updateProfileModal(profile);
+            // Wire edit actions (will mostly be ignored for other users)
+            this.setupProfileEditHandlers();
+            // Only load game history for self
+            if (!otherUserId) {
                 const historyResponse = await fetch('/api/game-history');
                 if (historyResponse.ok) {
                     const history = await historyResponse.json();
                     this.updateGameHistory(history);
                 }
-                
-                document.getElementById('profileModal').style.display = 'flex';
-            } else {
-                this.showNotification('Failed to load profile', 'error');
             }
+            document.getElementById('profileModal').style.display = 'flex';
         } catch (error) {
             console.error('Profile modal error:', error);
             this.showNotification('Failed to load profile', 'error');

@@ -1386,10 +1386,22 @@ class VelmoraGame {
                     playerText += ' (You)';
                 }
                 
-                playerDiv.textContent = playerText;
-                playerDiv.style.cursor = 'pointer';
-                playerDiv.title = 'View profile';
-                playerDiv.onclick = () => this.openPlayerProfile({ id: player.id, userId: player.userId, name: player.name });
+                									playerDiv.textContent = playerText;
+					if (player.alive) {
+						playerDiv.style.cursor = 'pointer';
+						playerDiv.title = player.isBot ? 'Bot' : 'View profile';
+						playerDiv.onclick = () => {
+							if (player.isBot) {
+								this.showToast('🤖 This is a bot and has no identity.', 'info');
+								return;
+							}
+							this.openPlayerProfile({ id: player.id, userId: player.userId, name: player.name });
+						};
+					} else {
+						playerDiv.style.cursor = 'default';
+						playerDiv.title = '';
+						playerDiv.onclick = null;
+					}
                 
                 lobbyList.appendChild(playerDiv);
             });

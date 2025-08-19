@@ -992,7 +992,7 @@ function broadcastGameStateToRoom(roomCode) {
     const publicGameState = {
         phase: room.phase,
         playerCount: room.players.size,
-        players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, role: p.role, alive: p.alive })),
+        players: Array.from(room.players.values()).map(p => ({ id: p.id, userId: p.userId || null, name: p.name, role: p.role, alive: p.alive, isBot: !!p.isBot })),
         alivePlayers: Array.from(room.players.values())
             .filter(p => !room.deadPlayers.has(p.id))
             .map(p => ({ id: p.id, name: p.name, alive: true })),
@@ -3098,5 +3098,30 @@ app.get('/api/users/search', async (req, res) => {
 		res.json(results);
 	} catch (e) {
 		res.status(500).json({ error: 'Search failed' });
+	}
+});
+
+// Public profile view by user id
+app.get('/api/profile/:userId/public', async (req, res) => {
+	try {
+		const { userId } = req.params;
+		if (!userId) return res.status(400).json({ error: 'Missing user id' });
+		const user = await db.getUserById(userId);
+		if (!user) return res.status(404).json({ error: 'User not found' });
+		// Return a safe, public subset
+		res.json({
+			id: user.id,
+			username: user.username,
+			displayName: user.display_name || user.displayName,
+			avatarUrl: user.avatar_url || null,
+			totalGames: user.total_games || 0,
+			totalWins: user.total_wins || 0,
+			mafiaWins: user.mafia_wins || 0,
+			civilianWins: user.civilian_wins || 0,
+			mafiaGames: user.mafia_games || 0,
+			civilianGames: user.civilian_games || 0
+		});
+	} catch (e) {
+		res.status(500).json({ error: 'Failed to fetch profile' });
 	}
 });

@@ -266,12 +266,22 @@ class LobbyManager {
 
                 const data = await response.json();
 
-                if (response.ok) {
-                    // Join the created lobby
-                    this.joinLobbyByCode(data.roomCode, data.lobbyInfo);
-                } else {
-                    this.showNotification(data.error || 'Failed to create lobby', 'error');
-                }
+                				if (response.ok) {
+					// Create the room on the socket server using the validated settings and code
+					const userData = window.authManager?.getUserForRoom();
+					if (window.game && window.game.socket && window.game.socket.connected) {
+						window.game.socket.emit('createRoom', {
+							roomCode: data.roomCode,
+							playerName: userData?.playerName || 'Player',
+							lobbyInfo: data.lobbyInfo
+						});
+						this.showNotification('Creating lobby...', 'info');
+					} else {
+						this.showNotification('Game connection not ready. Please wait a moment and try again.', 'error');
+					}
+				} else {
+					this.showNotification(data.error || 'Failed to create lobby', 'error');
+				}
             } else {
                 // Guest user or no auth - directly create room via socket
                 const guestPlayerNameInput = document.getElementById('guestPlayerName');
@@ -698,24 +708,42 @@ class LobbyManager {
 		}
 	}
 
-    // Handle deep link on load
-    maybeHandleDeepLink() {
-        const params = new URLSearchParams(window.location.search);
-        const action = params.get('action');
-        const room = params.get('room');
-        const token = params.get('token');
-        if (action === 'join' && room) {
-            // If authenticated, auto-join; else prompt name and join
-            document.getElementById('privateLobbyCode').value = room.toUpperCase();
-            this.joinPrivateLobby();
-            // Clear params to avoid re-trigger
-            history.replaceState({}, document.title, window.location.pathname);
+    		// Handle deep link on load
+		maybeHandleDeepLink() {
+			const params = new URLSearchParams(window.location.search);
+			const action = params.get('action');
+			const room = params.get('room');
+			const token = params.get('token');
+			if (action === 'join' && room) {
+				const performJoin = () => {
+					// If authenticated, auto-join; else prompt name and join
+					document.getElementById('privateLobbyCode').value = room.toUpperCase();
+					this.joinPrivateLobby();
+					// Clear params to avoid re-trigger once attempted
+					history.replaceState({}, document.title, window.location.pathname);
+				};
+				if (window.game) {
+					performJoin();
+				} else {
+					// Wait briefly for game initialization, then try
+					let attempts = 0;
+					const intervalId = setInterval(() => {
+						attempts++;
+						if (window.game) {
+							clearInterval(intervalId);
+							performJoin();
+						} else if (attempts >= 50) {
+							// Give up after ~5s without clearing params, so a reload can still work
+							clearInterval(intervalId);
+						}
+					}, 100);
+				}
+			}
+			if (action === 'reset' && token && window.authManager) {
+				window.authManager.openResetPasswordModal(token);
+				// do not clear token immediately so user can retry
+			}
 		}
-		if (action === 'reset' && token && window.authManager) {
-			window.authManager.openResetPasswordModal(token);
-			// do not clear token immediately so user can retry
-		}
-    }
 }
 
 // Initialize the lobby manager when DOM is ready

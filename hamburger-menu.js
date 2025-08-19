@@ -231,7 +231,7 @@ class HamburgerMenu {
     showAbout() {
         // Show about information
         const aboutMessage = `
-🎮 The Fall of Velmora v1.0
+					🎮 The Fall of Volmora v1.0
 
 A multiplayer social deduction game where wit meets strategy.
 

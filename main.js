@@ -78,7 +78,7 @@ class VelmoraGame {
             currentPanel: 0,
             introPanels: [
                 {
-                    text: "Velmora — a city of brilliance, unity, and secrets buried beneath its cobblestone streets.",
+                    text: "Volmora — a city of brilliance, unity, and secrets buried beneath its cobblestone streets.",
                     class: "panel-1"
                 },
                 {
@@ -98,17 +98,17 @@ class VelmoraGame {
                     class: "panel-5"
                 },
                 {
-                    text: "Velmora's fate lies in your hands. Unmask the Mafia. Restore the light.",
+                    text: "Volmora's fate lies in your hands. Unmask the Mafia. Restore the light.",
                     class: "panel-6"
                 }
             ],
             victoryEnding: [
                 {
-                    text: "Through wit, courage, and unity, the citizens of Velmora exposed the Mafia and reclaimed their city.",
+                    text: "Through wit, courage, and unity, the citizens of Volmora exposed the Mafia and reclaimed their city.",
                     class: "ending-victory"
                 },
                 {
-                    text: "Velmora rises again — stronger, wiser, and forever vigilant.",
+                    text: "Volmora rises again — stronger, wiser, and forever vigilant.",
                     class: "ending-victory"
                 }
             ],
@@ -118,7 +118,7 @@ class VelmoraGame {
                     class: "ending-defeat"
                 },
                 {
-                    text: "Velmora has fallen. The shadows now rule. Will anyone rise to challenge them again?",
+                    text: "Volmora has fallen. The shadows now rule. Will anyone rise to challenge them again?",
                     class: "ending-defeat"
                 }
             ]
@@ -571,11 +571,17 @@ class VelmoraGame {
             }
         });
 
-        this.socket.on('autoJoinRoom', (data) => {
-            // Auto-fill room code and switch to join form
-            document.getElementById('roomCodeInput').value = data.roomCode;
-            this.showJoinRoomForm();
-        });
+        		this.socket.on('autoJoinRoom', (data) => {
+			const code = data?.roomCode || '';
+			if (!code) return;
+			document.getElementById('roomCodeInput').value = code;
+			if (window.lobbyManager && typeof window.lobbyManager.joinLobbyByCode === 'function') {
+				window.lobbyManager.joinLobbyByCode(code);
+			} else {
+				this.showJoinRoomForm();
+				this.joinRoom();
+			}
+		});
 
         this.socket.on('roomCreated', (data) => {
             this.playerId = data.playerId;
@@ -2860,6 +2866,15 @@ class VelmoraGame {
         gameLoop();
     }
 
+    // Add mobile detection helper
+    isMobile() {
+        try {
+            return window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches;
+        } catch {
+            return window.innerWidth <= 768;
+        }
+    }
+
     render() {
         if (!this.ctx) return;
         
@@ -2878,6 +2893,12 @@ class VelmoraGame {
     }
 
     renderLobbyScene() {
+        const scaleFactor = this.isMobile() ? 0.5 : 1.0;
+        this.ctx.save();
+        if (scaleFactor !== 1) {
+            this.ctx.translate(this.canvas.width * (1 - scaleFactor) / 2, this.canvas.height * (1 - scaleFactor) / 2);
+            this.ctx.scale(scaleFactor, scaleFactor);
+        }
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
         
@@ -2885,7 +2906,7 @@ class VelmoraGame {
         this.ctx.fillStyle = '#4ecdc4';
         this.ctx.font = 'bold 48px Arial';
         this.ctx.textAlign = 'center';
-        this.ctx.fillText('The Fall of Velmora', centerX, centerY - 100);
+        this.ctx.fillText('The Fall of Volmora', centerX, centerY - 100);
         
         this.ctx.fillStyle = '#a0aec0';
         this.ctx.font = '24px Arial';
@@ -2905,6 +2926,8 @@ class VelmoraGame {
         
         // Draw atmospheric effects
         this.drawStars();
+        
+        this.ctx.restore();
     }
 
     drawGameOverInfo(centerX, centerY) {
@@ -3232,7 +3255,7 @@ class VelmoraGame {
         // Draw center text
         this.ctx.font = 'bold 24px Arial';
         this.ctx.fillStyle = '#ffd700';
-        this.ctx.fillText('Velmora', centerX, centerY + 20);
+        this.ctx.fillText('Volmora', centerX, centerY + 20);
         
         // Draw phase info
         this.ctx.font = 'bold 16px Arial';
@@ -3900,9 +3923,9 @@ class VelmoraGame {
         // Update ending titles
         if (winner === 'mafia') {
             document.getElementById('endingTitle').textContent = 'The Darkness Prevails';
-            document.getElementById('endingSubtitle').textContent = 'Velmora Has Fallen';
+            document.getElementById('endingSubtitle').textContent = 'Volmora Has Fallen';
         } else {
-            document.getElementById('endingTitle').textContent = 'Dawn Breaks Over Velmora';
+            document.getElementById('endingTitle').textContent = 'Dawn Breaks Over Volmora';
             document.getElementById('endingSubtitle').textContent = 'Light Triumphs Over Shadow';
         }
         
@@ -4089,11 +4112,11 @@ class VelmoraGame {
             if (winner === 'mafia') {
                 gameOverTitle.textContent = '💀 Mafiyas Win';
                 gameOverTitle.style.color = '#dc3545';
-                gameOverMessage.textContent = 'The Mafia has taken control of Velmora!';
+                gameOverMessage.textContent = 'The Mafia has taken control of Volmora!';
             } else if (winner === 'innocents') {
                 gameOverTitle.textContent = '🏆 Civilians Win';
                 gameOverTitle.style.color = '#28a745';
-                gameOverMessage.textContent = 'The Civilians have saved Velmora!';
+                gameOverMessage.textContent = 'The Civilians have saved Volmora!';
             } else {
                 gameOverTitle.textContent = 'Game Over';
                 gameOverTitle.style.color = '#333';

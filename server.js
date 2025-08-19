@@ -1295,7 +1295,7 @@ function startNightPhase(roomCode) {
     }
     const nightMessage = isFirstNight 
         ? '🌙 The game begins under cover of darkness. Special roles, make your first moves!'
-        : `🌙 Night ${room.dayCount} falls on Velmora. Special roles, make your moves!`;
+        : `🌙 Night ${room.dayCount} falls on Volmora. Special roles, make your moves!`;
     
     io.to(roomCode).emit('phaseChange', {
         phase: 'night',
@@ -2971,7 +2971,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`The Fall of Velmora server running on port ${PORT}`);
+    console.log(`The Fall of Volmora server running on port ${PORT}`);
 }); 
 
 // Direct Messages API routes

@@ -719,6 +719,12 @@ class AuthManager {
                     </div>
                 `;
                 requestsList.appendChild(requestItem);
+                const reqNameEl = requestItem.querySelector('.friend-name');
+                if (reqNameEl) {
+                    reqNameEl.style.cursor = 'pointer';
+                    reqNameEl.style.textDecoration = 'underline';
+                    reqNameEl.onclick = () => this.showProfileModal(request.id, request.display_name);
+                }
             });
         } else {
             requestsSection.style.display = 'none';
@@ -761,6 +767,12 @@ class AuthManager {
                     </div>
                 `;
                 section.appendChild(friendItem);
+                const nameEl = friendItem.querySelector('.friend-name');
+                if (nameEl) {
+                    nameEl.style.cursor = 'pointer';
+                    nameEl.style.textDecoration = 'underline';
+                    nameEl.onclick = () => this.showProfileModal(friend.id, friend.display_name);
+                }
             });
             friendsContainer.appendChild(section);
         };

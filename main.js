@@ -1387,6 +1387,10 @@ class VelmoraGame {
                 }
                 
                 playerDiv.textContent = playerText;
+                playerDiv.style.cursor = 'pointer';
+                playerDiv.title = 'View profile';
+                playerDiv.onclick = () => this.openPlayerProfile({ id: player.id, userId: player.userId, name: player.name });
+                
                 lobbyList.appendChild(playerDiv);
             });
         } else {
@@ -1641,19 +1645,18 @@ class VelmoraGame {
 
     // Modal functions removed - actions are now integrated into the player table
 
-    handlePlayerClick(targetPlayer) {
-        // In lobby (waiting) state, open profile instead of action modal
-        const inLobby = this.gameState && (this.gameState.phase === 'lobby' || this.gameState.gameStarted === false);
-        if (inLobby) {
-            this.openPlayerProfile(targetPlayer);
-            return;
-        }
-        // Don't show actions if current player is dead
-        if (this.isDead()) return;
-        
-        // Create action modal based on current phase and role
-        this.showPlayerActionModal(targetPlayer);
-    }
+    		handlePlayerClick(targetPlayer) {
+			// In lobby (waiting) state, ignore canvas clicks; profiles open via the lobby list only
+			const inLobby = this.gameState && (this.gameState.phase === 'lobby' || this.gameState.gameStarted === false);
+			if (inLobby) {
+				return;
+			}
+			// Don't show actions if current player is dead
+			if (this.isDead()) return;
+			
+			// Create action modal based on current phase and role
+			this.showPlayerActionModal(targetPlayer);
+		}
 
     openPlayerProfile(targetPlayer) {
         if (!targetPlayer) return;

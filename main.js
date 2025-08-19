@@ -1033,6 +1033,10 @@ class VelmoraGame {
         }
         
         this.updateWinStats();
+        
+        // Hide canvas in lobby
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas) canvas.style.display = 'none';
     }
 
     updateWinStats() {
@@ -1386,25 +1390,57 @@ class VelmoraGame {
                     playerText += ' (You)';
                 }
                 
-                									playerDiv.textContent = playerText;
-					if (player.alive) {
-						playerDiv.style.cursor = 'pointer';
-						playerDiv.title = player.isBot ? 'Bot' : 'View profile';
-						playerDiv.onclick = () => {
-							if (player.isBot) {
-								this.showToast('🤖 This is a bot and has no identity.', 'info');
-								return;
-							}
-							this.openPlayerProfile({ id: player.id, userId: player.userId, name: player.name });
-						};
-					} else {
-						playerDiv.style.cursor = 'default';
-						playerDiv.title = '';
-						playerDiv.onclick = null;
-					}
+                playerDiv.textContent = playerText;
+                // Attach metadata for delegation
+                playerDiv.setAttribute('data-id', player.id);
+                if (player.userId) playerDiv.setAttribute('data-user-id', player.userId);
+                playerDiv.setAttribute('data-name', player.name);
+                if (player.isBot) playerDiv.setAttribute('data-bot', '1');
+                
+                if (player.alive) {
+                    playerDiv.style.cursor = 'pointer';
+                    playerDiv.setAttribute('role', 'button');
+                    playerDiv.tabIndex = 0;
+                    playerDiv.title = player.isBot ? 'Bot' : 'View profile';
+                } else {
+                    playerDiv.style.cursor = 'default';
+                    playerDiv.title = '';
+                    playerDiv.removeAttribute('role');
+                    playerDiv.tabIndex = -1;
+                }
                 
                 lobbyList.appendChild(playerDiv);
             });
+            
+            // Event delegation (bind once)
+            if (!lobbyList._profileClickBound) {
+                lobbyList._profileClickBound = true;
+                lobbyList.addEventListener('click', (ev) => {
+                    const item = ev.target.closest('.player-item');
+                    if (!item || !lobbyList.contains(item)) return;
+                    if (!item.classList.contains('alive')) return;
+                    const isBot = item.getAttribute('data-bot') === '1';
+                    if (isBot) { this.showToast('🤖 This is a bot and has no identity.', 'info'); return; }
+                    const userId = item.getAttribute('data-user-id');
+                    const name = item.getAttribute('data-name') || item.textContent;
+                    if (!userId) { this.showToast('Profile unavailable for this player', 'error'); return; }
+                    this.openPlayerProfile({ id: item.getAttribute('data-id'), userId, name });
+                });
+                // Keyboard accessibility (Enter/Space)
+                lobbyList.addEventListener('keydown', (ev) => {
+                    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+                    const item = ev.target.closest('.player-item');
+                    if (!item || !lobbyList.contains(item)) return;
+                    if (!item.classList.contains('alive')) return;
+                    ev.preventDefault();
+                    const isBot = item.getAttribute('data-bot') === '1';
+                    if (isBot) { this.showToast('🤖 This is a bot and has no identity.', 'info'); return; }
+                    const userId = item.getAttribute('data-user-id');
+                    const name = item.getAttribute('data-name') || item.textContent;
+                    if (!userId) { this.showToast('Profile unavailable for this player', 'error'); return; }
+                    this.openPlayerProfile({ id: item.getAttribute('data-id'), userId, name });
+                });
+            }
         } else {
             console.log('updatePlayerLists: lobbyList or gameState.players not available'); // Debug log
         }
@@ -1989,6 +2025,10 @@ class VelmoraGame {
         this.currentScreen = 'game';
         document.getElementById('lobbyScreen').style.display = 'none';
         document.getElementById('gameScreen').style.display = 'grid';
+        
+        // Ensure canvas is visible in game
+        const canvas = document.getElementById('gameCanvas');
+        if (canvas) canvas.style.display = 'block';
         
         // Clear any lingering game over information
         this.gameOverInfo = null;

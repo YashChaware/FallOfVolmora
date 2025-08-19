@@ -1649,12 +1649,23 @@ io.on('connection', (socket) => {
                 // Update user online status
                 await db.updateLastLogin(socket.userId);
                 
-                socket.emit('socketAuthenticated', {
-                    userId: socket.userId,
-                    username: socket.username
-                });
-                
-                console.log(`Socket authenticated for user: ${socket.username}`);
+                				socket.emit('socketAuthenticated', {
+					userId: socket.userId,
+					username: socket.username
+				});
+				
+				console.log(`Socket authenticated for user: ${socket.username}`);
+				// Propagate userId into any existing room player entry for this socket
+				for (const [code, room] of rooms) {
+					if (room.players && room.players.has(socket.id)) {
+						const player = room.players.get(socket.id);
+						player.userId = socket.userId;
+						player.isAuthenticated = true;
+						room.players.set(socket.id, player);
+						broadcastGameStateToRoom(code);
+						break;
+					}
+				}
             }
         } catch (error) {
             console.error('Socket authentication error:', error);

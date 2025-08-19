@@ -1642,11 +1642,29 @@ class VelmoraGame {
     // Modal functions removed - actions are now integrated into the player table
 
     handlePlayerClick(targetPlayer) {
+        // In lobby (waiting) state, open profile instead of action modal
+        const inLobby = this.gameState && (this.gameState.phase === 'lobby' || this.gameState.gameStarted === false);
+        if (inLobby) {
+            this.openPlayerProfile(targetPlayer);
+            return;
+        }
         // Don't show actions if current player is dead
         if (this.isDead()) return;
         
         // Create action modal based on current phase and role
         this.showPlayerActionModal(targetPlayer);
+    }
+
+    openPlayerProfile(targetPlayer) {
+        if (!targetPlayer) return;
+        // If there is a profile modal in auth manager, use it
+        if (window.authManager && typeof window.authManager.showProfileModal === 'function') {
+            window.authManager.showProfileModal(targetPlayer.userId || null, targetPlayer.name);
+            return;
+        }
+        // Fallback: simple profile prompt
+        const info = `Player: ${targetPlayer.name}\n${targetPlayer.userId ? 'User ID: ' + targetPlayer.userId : 'Guest player'}`;
+        alert(info);
     }
 
     showPlayerActionModal(targetPlayer) {
@@ -2926,8 +2944,59 @@ class VelmoraGame {
         
         // Draw atmospheric effects
         this.drawStars();
+
+        // For mobile, show a compact stats panel in lobby too
+        if (this.isMobile()) {
+            this.drawLobbyStatsPanel();
+        }
         
         this.ctx.restore();
+    }
+
+    // Compact stats panel for lobby on mobile
+    drawLobbyStatsPanel() {
+        const panelWidth = Math.min(this.canvas.width * 0.9, 560);
+        const panelHeight = 90;
+        const panelX = (this.canvas.width - panelWidth) / 2;
+        const panelY = this.canvas.height - panelHeight - 20;
+        
+        // Background
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.strokeStyle = '#4ecdc4';
+        this.ctx.lineWidth = 2;
+        this.ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+        this.ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+        
+        // Left side: Phase / Day
+        this.ctx.font = 'bold 14px Arial';
+        this.ctx.fillStyle = '#ffd700';
+        this.ctx.textAlign = 'left';
+        const phaseText = this.gameState.phase ? `Phase: ${this.gameState.phase.toUpperCase()}` : 'Phase: LOBBY';
+        this.ctx.fillText(phaseText, panelX + 16, panelY + 26);
+        if (this.gameState.dayCount > 0) {
+            this.ctx.fillText(`Day: ${this.gameState.dayCount}`, panelX + 16, panelY + 46);
+        }
+        
+        // Right side: Time and counts
+        this.ctx.textAlign = 'right';
+        // Time (if present)
+        if (this.gameState.timeRemaining > 0) {
+            const minutes = Math.floor(this.gameState.timeRemaining / 60);
+            const seconds = this.gameState.timeRemaining % 60;
+            const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            this.ctx.font = 'bold 16px Arial';
+            this.ctx.fillStyle = this.gameState.timeRemaining <= 30 ? '#e53e3e' : '#4ecdc4';
+            this.ctx.fillText(`Time: ${timeText}`, panelX + panelWidth - 16, panelY + 30);
+        }
+        
+        // Alive/Dead
+        let alivePlayers = 0;
+        let deadPlayers = 0;
+        if (Array.isArray(this.gameState.alivePlayers)) alivePlayers = this.gameState.alivePlayers.length;
+        if (Array.isArray(this.gameState.deadPlayers)) deadPlayers = this.gameState.deadPlayers.length;
+        this.ctx.font = '12px Arial';
+        this.ctx.fillStyle = '#a0aec0';
+        this.ctx.fillText(`Alive: ${alivePlayers} | Dead: ${deadPlayers}`, panelX + panelWidth - 16, panelY + 54);
     }
 
     drawGameOverInfo(centerX, centerY) {

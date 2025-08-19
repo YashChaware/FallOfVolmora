@@ -314,11 +314,11 @@ class AuthManager {
                             <img id="profileAvatarImg" src="${avatarUrl}" alt="Avatar" style="width:72px; height:72px; border-radius:50%; object-fit:cover; cursor:pointer; flex-shrink:0;">
                             <div style="min-width:0;">
                                 <div style="font-size:1.1rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="profileDisplayNameText">${profile.displayName || ''}</div>
+                                <div id="profileHeaderActions" style="margin-top:8px; display:flex; gap:8px;"></div>
                             </div>
                         </div>
                         <div id="profileTopRight" style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center;">
                             <div id="profileBioText" style="white-space:pre-wrap; color:#ccc; min-height:2.2em;">${profile.bio ? (profile.bio) : ''}</div>
-                            <div id="profileHeaderActions" style="margin-top:10px; display:flex; gap:8px;"></div>
                         </div>
                     `;
                     content.insertAdjacentElement('afterbegin', header);
@@ -1139,18 +1139,11 @@ class AuthManager {
 			return;
 		}
 		try {
-			// Send via socket for realtime
+			// Send via socket for realtime and persistence (server handles storage and echo)
 			if (window.game && window.game.socket) {
 				window.game.socket.emit('dmMessage', { toUserId: friendId, text });
 			}
-			// Persist via API
-			await fetch(`/api/dm/${friendId}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text })
-			});
-			// Optimistic append
-			this.appendDmMessage('You', text);
+			// Clear input after sending; rely on server echo to render the message once
 			input.value = '';
 		} catch (e) {
 			this.showNotification('Failed to send', 'error');

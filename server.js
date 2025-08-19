@@ -2945,25 +2945,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Enforce DM permission
-    socket.on('dmMessage', async (data) => {
-        try {
-            const fromUserId = socket.userId;
-            const { toUserId, text } = data;
-            if (!fromUserId || !toUserId || !text || text.length > 1000) return;
-            const canDM = await db.areFriends(fromUserId, toUserId);
-            if (!canDM) return;
-            const msg = await db.createDirectMessage(fromUserId, toUserId, text);
-            const recipientSocketId = userSessions.get(toUserId);
-            if (recipientSocketId) {
-                io.to(recipientSocketId).emit('dmMessage', { fromUserId, text: msg.text, createdAt: msg.createdAt });
-            }
-            // Echo back to sender UI
-            socket.emit('dmMessage', { fromUserId, text: msg.text, createdAt: msg.createdAt });
-        } catch (e) {
-            console.error('dmMessage error:', e);
-        }
-    });
+    
 
     socket.on('setTutorialStep', (data) => {
         const { roomCode, step, forceRole } = data || {};

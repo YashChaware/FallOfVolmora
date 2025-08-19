@@ -288,100 +288,113 @@ class AuthManager {
                 profile = await response.json();
             }
             
-            // Build a view-only header for other users, else use full editor
+            // Build view based on whose profile it is
             const modal = document.getElementById('profileModal');
             const content = modal ? modal.querySelector('.profile-content') : null;
-            if (content) {
-                // Clear header area
-                const existingHeader = content.querySelector('.profile-header');
-                if (existingHeader) existingHeader.remove();
-				const header = document.createElement('div');
-				header.className = 'profile-header';
-				header.style.display = 'flex';
-				header.style.alignItems = 'stretch';
-				header.style.gap = '16px';
-				header.style.marginBottom = '16px';
-				const avatarUrl = profile.avatarUrl || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(profile.displayName || 'User'));
-				// Remove any old extra/edit sections
-				const extra = content.querySelector('.profile-extra');
-				if (extra) extra.remove();
-				// Build two-column top row
-				header.innerHTML = `
-					<div id="profileTopLeft" style="flex:1; min-width:0; display:flex; align-items:center; gap:12px;">
-						<img id="profileAvatarImg" src="${avatarUrl}" alt="Avatar" style="width:72px; height:72px; border-radius:50%; object-fit:cover; cursor:${isOther ? 'pointer' : 'default'}; flex-shrink:0;">
-						<div style="min-width:0;">
-							<div style="font-size:1.1rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="profileDisplayNameText">${profile.displayName || ''}</div>
-						</div>
-					</div>
-					<div id="profileTopRight" style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center;">
-						<div id="profileBioText" style="white-space:pre-wrap; color:#ccc; min-height:2.2em;">${profile.bio ? (profile.bio) : ''}</div>
-						<div id="profileHeaderActions" style="margin-top:10px; display:flex; gap:8px;"></div>
-					</div>
-				`;
-				content.insertAdjacentElement('afterbegin', header);
-				
-				// Header actions: for other users, show Message/Add Friend; for self, no button
-				const actions = header.querySelector('#profileHeaderActions');
-				if (isOther) {
-					const friendsData = await fetch('/api/friends').then(r => r.ok ? r.json() : { friends: [], friendRequests: [] }).catch(() => ({ friends: [], friendRequests: [] }));
-					const isFriend = (friendsData.friends || []).some(f => f.id === otherUserId);
-					const btn = document.createElement('button');
-					btn.className = 'btn-mini';
-					btn.textContent = isFriend ? 'Message' : 'Add Friend';
-					btn.onclick = async () => {
-						if (isFriend) {
-							if (window.authManager) {
-								this.showFriendsModal();
-								setTimeout(() => {
-									const input = document.getElementById('friendSearchInput');
-									if (input) {
-										input.value = profile.displayName || '';
-										input.dispatchEvent(new Event('input'));
-									}
-								}, 50);
-							}
-						} else {
-							try {
-								const res = await fetch('/api/profile/' + otherUserId + '/friend-request', { method: 'POST' });
-								if (res.ok) this.showNotification('Friend request sent', 'success');
-								else { const d = await res.json(); this.showNotification(d.error || 'Failed to send request', 'error'); }
-							} catch { this.showNotification('Failed to send request', 'error'); }
-						}
-					};
-					actions.appendChild(btn);
-				}
-				// Hide any edit controls/settings blocks if present
-				content.querySelectorAll('.profile-edit-controls').forEach(el => el.style.display = 'none');
-				// Avatar viewer
-				const img = header.querySelector('#profileAvatarImg');
-				img.onclick = () => {
-					if (!isOther) return; // keep self non-clickable per request
-					let viewer = document.getElementById('imageViewerModal');
-					if (!viewer) {
-						viewer = document.createElement('div');
-						viewer.id = 'imageViewerModal';
-						viewer.className = 'modal';
-						viewer.innerHTML = `<div class=\"modal-content\" style=\"max-width:90vw;\"><span class=\"close\" id=\"closeImageViewer\">&times;</span><img id=\"viewerImg\" src=\"${avatarUrl}\" style=\"max-width:100%; border-radius:12px;\"></div>`;
-						document.body.appendChild(viewer);
-						document.getElementById('closeImageViewer').onclick = () => viewer.style.display = 'none';
-					}
-					document.getElementById('viewerImg').src = avatarUrl;
-					viewer.style.display = 'flex';
-				};
-				// Center bottom sections
-				content.style.display = 'flex';
-				content.style.flexDirection = 'column';
-				content.style.alignItems = 'center';
-				const stats = content.querySelector('.profile-stats');
-				const history = content.querySelector('.profile-history');
-				if (stats) { stats.style.margin = '0 auto'; stats.style.maxWidth = '720px'; stats.style.width = '100%'; }
-				if (history) { history.style.margin = '0 auto'; history.style.maxWidth = '720px'; history.style.width = '100%'; }
-
-            }
+            const titleEl = modal ? modal.querySelector('h2') : null;
+            if (titleEl) titleEl.textContent = isOther ? `${profile.displayName || 'Profile'}` : 'Your Profile';
             
-            // For other users, don’t wire edit handlers or history
-            this.updateProfileModal(profile);
-            if (!isOther) {
+            if (isOther) {
+                // VIEW-ONLY: remove any previous editable blocks
+                if (content) {
+                    const existingHeader = content.querySelector('.profile-header');
+                    if (existingHeader) existingHeader.remove();
+                    const extra = content.querySelector('.profile-extra');
+                    if (extra) extra.remove();
+                    // Two-column top row
+                    const header = document.createElement('div');
+                    header.className = 'profile-header';
+                    header.style.display = 'flex';
+                    header.style.alignItems = 'stretch';
+                    header.style.gap = '16px';
+                    header.style.marginBottom = '16px';
+                    const avatarUrl = profile.avatarUrl || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(profile.displayName || 'User'));
+                    header.innerHTML = `
+                        <div id="profileTopLeft" style="flex:1; min-width:0; display:flex; align-items:center; gap:12px;">
+                            <img id="profileAvatarImg" src="${avatarUrl}" alt="Avatar" style="width:72px; height:72px; border-radius:50%; object-fit:cover; cursor:pointer; flex-shrink:0;">
+                            <div style="min-width:0;">
+                                <div style="font-size:1.1rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="profileDisplayNameText">${profile.displayName || ''}</div>
+                            </div>
+                        </div>
+                        <div id="profileTopRight" style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center;">
+                            <div id="profileBioText" style="white-space:pre-wrap; color:#ccc; min-height:2.2em;">${profile.bio ? (profile.bio) : ''}</div>
+                            <div id="profileHeaderActions" style="margin-top:10px; display:flex; gap:8px;"></div>
+                        </div>
+                    `;
+                    content.insertAdjacentElement('afterbegin', header);
+                    // Action button
+                    const actions = header.querySelector('#profileHeaderActions');
+                    const friendsData = await fetch('/api/friends').then(r => r.ok ? r.json() : { friends: [], friendRequests: [] }).catch(() => ({ friends: [], friendRequests: [] }));
+                    const isFriend = (friendsData.friends || []).some(f => f.id === otherUserId);
+                    const btn = document.createElement('button');
+                    btn.className = 'btn-mini';
+                    btn.textContent = isFriend ? 'Message' : 'Add Friend';
+                    btn.onclick = async () => {
+                        if (isFriend) {
+                            this.showFriendsModal();
+                            setTimeout(() => {
+                                const input = document.getElementById('friendSearchInput');
+                                if (input) {
+                                    input.value = profile.displayName || '';
+                                    input.dispatchEvent(new Event('input'));
+                                }
+                            }, 50);
+                        } else {
+                            try {
+                                const res = await fetch('/api/profile/' + otherUserId + '/friend-request', { method: 'POST' });
+                                if (res.ok) this.showNotification('Friend request sent', 'success');
+                                else { const d = await res.json(); this.showNotification(d.error || 'Failed to send request', 'error'); }
+                            } catch { this.showNotification('Failed to send request', 'error'); }
+                        }
+                    };
+                    actions.appendChild(btn);
+                    // Avatar viewer
+                    header.querySelector('#profileAvatarImg').onclick = () => {
+                        let viewer = document.getElementById('imageViewerModal');
+                        if (!viewer) {
+                            viewer = document.createElement('div');
+                            viewer.id = 'imageViewerModal';
+                            viewer.className = 'modal';
+                            viewer.innerHTML = `<div class=\"modal-content\" style=\"max-width:90vw;\"><span class=\"close\" id=\"closeImageViewer\">&times;</span><img id=\"viewerImg\" src=\"${avatarUrl}\" style=\"max-width:100%; border-radius:12px;\"></div>`;
+                            document.body.appendChild(viewer);
+                            document.getElementById('closeImageViewer').onclick = () => viewer.style.display = 'none';
+                        }
+                        document.getElementById('viewerImg').src = avatarUrl;
+                        viewer.style.display = 'flex';
+                    };
+                    // Center bottom sections
+                    content.style.display = 'flex';
+                    content.style.flexDirection = 'column';
+                    content.style.alignItems = 'center';
+                    const stats = content.querySelector('.profile-stats');
+                    const history = content.querySelector('.profile-history');
+                    if (stats) { stats.style.margin = '0 auto'; stats.style.maxWidth = '720px'; stats.style.width = '100%'; }
+                    if (history) { history.style.margin = '0 auto'; history.style.maxWidth = '720px'; history.style.width = '100%'; }
+                    // Populate stats values
+                    const mafiaGames = profile.mafiaGames || profile.mafia_games || 0;
+                    const civilianGames = profile.civilianGames || profile.civilian_games || 0;
+                    const mafiaRate = mafiaGames > 0 ? Math.round((profile.mafiaWins / mafiaGames) * 100) : 0;
+                    const civilianRate = civilianGames > 0 ? Math.round((profile.civilianWins / civilianGames) * 100) : 0;
+                    const overallWinRate = profile.totalGames > 0 ? Math.round((profile.totalWins / profile.totalGames) * 100) : 0;
+                    const tg = document.getElementById('profileTotalGames'); if (tg) tg.textContent = profile.totalGames || 0;
+                    const tw = document.getElementById('profileTotalWins'); if (tw) tw.textContent = profile.totalWins || 0;
+                    const mw = document.getElementById('profileMafiaWins'); if (mw) mw.textContent = profile.mafiaWins || 0;
+                    const cw = document.getElementById('profileCivilianWins'); if (cw) cw.textContent = profile.civilianWins || 0;
+                    const wr = document.getElementById('profileWinRate'); if (wr) wr.textContent = `${overallWinRate}%`;
+                    const statsBox = content.querySelector('.profile-stats');
+                    if (statsBox && !statsBox.querySelector('.detailed-rates')) {
+                        const rates = document.createElement('div');
+                        rates.className = 'detailed-rates';
+                        rates.innerHTML = `
+                            <div class="stat-item"><span class="stat-label">Mafia Win Rate:</span><span class="stat-value">${mafiaRate}%</span></div>
+                            <div class="stat-item"><span class="stat-label">Civilian Win Rate:</span><span class="stat-value">${civilianRate}%</span></div>
+                        `;
+                        statsBox.appendChild(rates);
+                    }
+                }
+            } else {
+                // OWN PROFILE: use full editable layout
+                this.updateProfileModal(profile);
                 this.setupProfileEditHandlers();
                 const historyResponse = await fetch('/api/game-history');
                 if (historyResponse.ok) {

@@ -588,6 +588,20 @@ class VelmoraGame {
             this.playerName = data.playerName;
             this.currentRoomCode = data.roomCode;
             this.currentLobbyInfo = data.lobbyInfo;
+            // Inject begin: merge settings from lobbyInfo
+            if (data.lobbyInfo) {
+                this.gameState.settings = {
+                    ...this.gameState.settings,
+                    maxPlayers: data.lobbyInfo.maxPlayers ?? this.gameState.settings.maxPlayers,
+                    mafiaCount: data.lobbyInfo.mafiaCount ?? this.gameState.settings.mafiaCount,
+                    suicideBomberEnabled: data.lobbyInfo.suicideBomberEnabled ?? this.gameState.settings.suicideBomberEnabled,
+                    manipulatorEnabled: data.lobbyInfo.manipulatorEnabled ?? this.gameState.settings.manipulatorEnabled,
+                    autoPoliceRoles: data.lobbyInfo.autoPoliceRoles ?? this.gameState.settings.autoPoliceRoles,
+                    enableBots: data.lobbyInfo.enableBots ?? this.gameState.settings.enableBots,
+                    botCount: data.lobbyInfo.botCount ?? this.gameState.settings.botCount
+                };
+            }
+            // Inject end
             
             // Update lobby name display
             if (data.lobbyInfo && data.lobbyInfo.lobbyName) {
@@ -609,6 +623,20 @@ class VelmoraGame {
             this.playerName = data.playerName;
             this.currentRoomCode = data.roomCode;
             this.currentLobbyInfo = data.lobbyInfo;
+            // Inject begin: merge settings from lobbyInfo
+            if (data.lobbyInfo) {
+                this.gameState.settings = {
+                    ...this.gameState.settings,
+                    maxPlayers: data.lobbyInfo.maxPlayers ?? this.gameState.settings.maxPlayers,
+                    mafiaCount: data.lobbyInfo.mafiaCount ?? this.gameState.settings.mafiaCount,
+                    suicideBomberEnabled: data.lobbyInfo.suicideBomberEnabled ?? this.gameState.settings.suicideBomberEnabled,
+                    manipulatorEnabled: data.lobbyInfo.manipulatorEnabled ?? this.gameState.settings.manipulatorEnabled,
+                    autoPoliceRoles: data.lobbyInfo.autoPoliceRoles ?? this.gameState.settings.autoPoliceRoles,
+                    enableBots: data.lobbyInfo.enableBots ?? this.gameState.settings.enableBots,
+                    botCount: data.lobbyInfo.botCount ?? this.gameState.settings.botCount
+                };
+            }
+            // Inject end
             
             // Update lobby name display
             if (data.lobbyInfo && data.lobbyInfo.lobbyName) {
@@ -2735,7 +2763,12 @@ class VelmoraGame {
         const botSettingsLobby = document.getElementById('botSettingsLobby');
         
         if (botToggle) {
-            botToggle.checked = this.gameState.settings.enableBots || false;
+            const enableBots = (this.gameState.settings && ('enableBots' in this.gameState.settings))
+                ? this.gameState.settings.enableBots
+                : (this.currentLobbyInfo && ('enableBots' in this.currentLobbyInfo))
+                    ? this.currentLobbyInfo.enableBots
+                    : false;
+            botToggle.checked = !!enableBots;
             botToggle.addEventListener('change', (e) => {
                 if (botSettingsLobby) {
                     botSettingsLobby.style.display = e.target.checked ? 'block' : 'none';
@@ -2744,7 +2777,12 @@ class VelmoraGame {
         }
         
         if (botCountLobby) {
-            botCountLobby.value = this.gameState.settings.botCount || 1;
+            const botCount = (this.gameState.settings && ('botCount' in this.gameState.settings))
+                ? this.gameState.settings.botCount
+                : (this.currentLobbyInfo && ('botCount' in this.currentLobbyInfo))
+                    ? this.currentLobbyInfo.botCount
+                    : 1;
+            botCountLobby.value = botCount;
         }
         
         // Set initial bot settings visibility

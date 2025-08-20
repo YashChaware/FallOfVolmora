@@ -997,7 +997,8 @@ class VelmoraGame {
             // Show lobby selection screen
             this.hideRoomInfo();
             
-            // Reset body class
+            // Reset body classes
+            document.body.classList.remove('in-game');
             document.body.className = '';
             
             // Make sure we're on the lobby screen
@@ -1341,6 +1342,7 @@ class VelmoraGame {
         const minPlayersText = document.getElementById('min-players-text') || 
                                document.querySelector('.min-players-text');
         if (minPlayersText) {
+            const humanPlayerCount = this.gameState.players ? this.gameState.players.filter(p => !p.isBot).length : 0;
             if (humanPlayerCount === 0 && this.gameState.playerCount > 0) {
                 minPlayersText.textContent = 'At least 1 human player required to start';
                 minPlayersText.style.color = '#ff6b6b';
@@ -1361,6 +1363,9 @@ class VelmoraGame {
 
         // Update room settings display
         this.updateRoomSettingsDisplay();
+
+        // Update mobile phase bar
+        this.updateMobilePhaseBar();
     }
 
     updatePlayerLists() {
@@ -2026,6 +2031,9 @@ class VelmoraGame {
         document.getElementById('lobbyScreen').style.display = 'none';
         document.getElementById('gameScreen').style.display = 'grid';
         
+        // Mark body as in-game for responsive CSS
+        document.body.classList.add('in-game');
+        
         // Ensure canvas is visible in game
         const canvas = document.getElementById('gameCanvas');
         if (canvas) canvas.style.display = 'block';
@@ -2091,6 +2099,9 @@ class VelmoraGame {
         if (phaseDisplay && this.gameState.phase) {
             phaseDisplay.textContent = this.gameState.phase;
         }
+
+        // Also refresh mobile bar when role changes
+        this.updateMobilePhaseBar();
     }
 
     showRoleInfo(role, description) {
@@ -2565,6 +2576,7 @@ class VelmoraGame {
         // Update win stats
         this.updateWinStats();
         
+        document.body.classList.remove('in-game');
         document.body.className = '';
         this.updateUI();
     }
@@ -4606,6 +4618,39 @@ class VelmoraGame {
 		this.tutorial.sequence = seq;
 		this.startSandboxTutorial(current, () => this._advanceSandboxSequence());
 	}
+
+    updateMobilePhaseBar() {
+        const bar = document.getElementById('mobilePhaseBar');
+        if (!bar) return;
+        // Only show on small screens
+        const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+        if (!isMobile) {
+            bar.style.display = 'none';
+            return;
+        }
+        // Compose compact info
+        const phase = this.gameState?.phase || 'Lobby';
+        const timerEl = document.getElementById('timer');
+        const timerText = timerEl ? timerEl.textContent : '--:--';
+        let roleText = '';
+        if (this.playerRole && this.gameState?.gameStarted) {
+            const roleName = this.playerRole.charAt(0).toUpperCase() + this.playerRole.slice(1);
+            roleText = ` • ${roleName}`;
+        }
+        let hint = '';
+        if (!this.isDead()) {
+            if (phase === 'day') hint = ' • Vote during day';
+            else if (phase === 'night') {
+                if (this.playerRole === 'mafia') hint = ' • Choose a target';
+                else if (this.playerRole === 'detective') hint = ' • Investigate a player';
+                else if (this.playerRole === 'doctor') hint = ' • Protect someone';
+            }
+        } else {
+            hint = ' • You are eliminated';
+        }
+        bar.textContent = `${phase.toUpperCase()} • ${timerText}${roleText}${hint}`;
+        bar.style.display = 'block';
+    }
 }
 
 // Initialize the game when the DOM is loaded

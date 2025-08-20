@@ -48,6 +48,11 @@ body.night-phase {
     padding: 0;
 }
 
+/* Slightly taller canvas on mobile by reducing chat area height and margins */
+@media (max-width: 768px) {
+    .canvas-container { min-height: 60vh; }
+}
+
 /* Game Status Bar */
 .game-status-bar {
     grid-area: status;
@@ -1206,8 +1211,8 @@ button:disabled {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
+    gap: 0.75rem;
+    padding: 0.75rem;
     overflow: hidden;
 }
 
@@ -2011,27 +2016,41 @@ button:disabled {
 
 .chat-input {
     display: flex;
-    gap: 0.5rem;
+    gap: min(2vw, 1rem);
 }
 
-.chat-input input {
-    flex: 1;
-    padding: 0.6rem;
-    border: 1px solid #4a5568;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.4);
-    color: #e0e0e0;
-}
+/* Mobile chat ordering and sizing tweaks */
+@media (max-width: 768px) {
+    .chat-section {
+        display: flex;
+        flex-direction: column;
+        padding: 1vh 2vw;
+    }
+    .chat-section .chat-header { order: 0; }
+    .chat-section .chat-input { order: 1; }
+    .chat-section .chat-messages { order: 2; }
 
-.chat-input button {
-    padding: 0.6rem 0.8rem;
-    font-size: 0.9rem;
-    background: #4ecdc4;
-    color: #1a202c;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    font-weight: bold;
+    /* Center input and send button; use responsive sizing */
+    .chat-input { justify-content: center; align-items: center; gap: 2vw; }
+    .chat-input input { flex: 0 1 72%; max-width: 80vw; padding: 1.5vh 2vw; }
+    .chat-input button { flex: 0 0 auto; padding: 1.5vh 3vw; font-size: 2.2vh; }
+
+    /* Hide overlay instructions; use mobile bar instead */
+    .phase-instructions { display: none !important; }
+
+    /* Mobile phase bar styling */
+    #mobilePhaseBar {
+        display: block;
+        padding: 1vh 2vw;
+        margin: 0 2vw 2vw 2vw;
+        background: rgba(78, 205, 196, 0.12);
+        border: 1px solid rgba(78, 205, 196, 0.35);
+        border-radius: 0.8vh;
+        color: #4ecdc4;
+        font-weight: 700;
+        font-size: 1.8vh;
+        text-align: center;
+    }
 }
 
 .mafia-chat-panel .chat-input button {
@@ -2450,43 +2469,43 @@ body.voting-phase {
             "status"
             "canvas"
             "chat";
-        grid-template-rows: auto 1fr 250px;
+        grid-template-rows: auto 1fr 28vh;
         grid-template-columns: 1fr;
     }
     
     .chat-window {
         border-left: none;
-        border-top: 3px solid #4ecdc4;
-        box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.8);
+        border-top: 0.4vh solid #4ecdc4;
+        box-shadow: 0 -2vh 3vh rgba(0, 0, 0, 0.8);
     }
     
     .chat-window-content {
-        gap: 0.5rem;
-        padding: 0.5rem;
+        gap: 1.2vh;
+        padding: 1.2vh 2vw;
     }
     
     .chat-section {
-        min-height: 100px;
-        max-height: 120px;
+        min-height: 14vh;
+        max-height: 18vh;
     }
     
     .game-status-bar {
-        flex-direction: column;
-        gap: 0.02rem;
-        text-align: center;
-        padding: 0 0.4rem 6px 0.4rem;
-        min-height: 3px;
+        flex-direction: row;
+        gap: 0.5rem;
+        text-align: left;
+        padding: 0 1rem 10px 1rem;
+        min-height: 10px;
     }
     
     .room-info {
         flex-direction: row;
-        justify-content: center;
-        gap: 0.1rem;
+        justify-content: flex-start;
+        gap: 0.25rem;
     }
     
     .phase-timer-container {
-        order: -1;
-        gap: 0.1rem;
+        order: 0;
+        gap: 0.2rem;
     }
     
     .round-table-container {
@@ -2501,7 +2520,7 @@ body.voting-phase {
     }
     
     .chat-section {
-        height: 60px;
+        height: auto;
     }
     
     .player-seat {
@@ -3986,4 +4005,8 @@ body.voting-phase {
 	.create-lobby-form .form-actions { grid-column: 1 / -1; grid-row: 3; }
 	/* Hamburger dropdown width */
 	.hamburger-dropdown { min-width: 220px; max-width: 280px; }
+}
+
+@media (max-width: 768px) {
+	body.in-game .game-header { display: none !important; }
 }

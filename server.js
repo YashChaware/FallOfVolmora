@@ -50,16 +50,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(uploadsRoot));
 
-// Session configuration
-app.use(session({
+// Session configuration (reuse for HTTP and Socket.IO)
+const sessionMiddleware = session({
 	secret: process.env.SESSION_SECRET || 'velmora-secret-key-change-in-production',
 	resave: false,
 	saveUninitialized: false,
 	cookie: {
 		secure: false, // Set to true in production with HTTPS
+		sameSite: 'lax', // Helps keep cookies on mobile reloads
 		maxAge: 24 * 60 * 60 * 1000 // 24 hours
 	}
-}));
+});
+app.use(sessionMiddleware);
+// Share session with Socket.IO
+io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
 
 // Rate limiting
 const authLimiter = rateLimit({
@@ -1622,7 +1626,7 @@ function cleanupRoom(roomCode) {
     publicLobbies.delete(roomCode); // Also remove from public lobbies
 }
 
-// Share session with socket.io
+// Attach user info from session to socket for convenience
 io.use((socket, next) => {
     const sessionStore = socket.request.session;
     socket.userId = sessionStore?.userId;

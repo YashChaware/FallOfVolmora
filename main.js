@@ -1434,6 +1434,41 @@ class VelmoraGame {
         // Update room settings display
         this.updateRoomSettingsDisplay();
 
+        // Mobile compact settings: show for host on mobile and bind Apply
+        const mobileSettings = document.getElementById('mobileLobbySettings');
+        if (mobileSettings) {
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+            if (isMobile && this.isHost() && this.currentScreen === 'lobby') {
+                mobileSettings.classList.add('show');
+                const mp = document.getElementById('maxPlayersMobile');
+                const mc = document.getElementById('mafiaCountMobile');
+                const eb = document.getElementById('enableBotsMobile');
+                const bc = document.getElementById('botCountMobile');
+                if (mp) mp.value = this.gameState.settings.maxPlayers;
+                if (mc) mc.value = this.gameState.settings.mafiaCount;
+                if (eb) eb.checked = !!this.gameState.settings.enableBots;
+                if (bc) bc.value = this.gameState.settings.botCount || 0;
+                const applyBtn = document.getElementById('applyMobileSettingsBtn');
+                if (applyBtn && !applyBtn._bound) {
+                    applyBtn._bound = true;
+                    applyBtn.addEventListener('click', () => {
+                        const maxPlayers = parseInt(mp.value);
+                        const mafiaCount = parseInt(mc.value);
+                        const enableBots = !!eb.checked;
+                        const botCount = parseInt(bc.value);
+                        this.updateRoomSettings(maxPlayers, mafiaCount, this.gameState.settings.suicideBomberEnabled, this.gameState.settings.manipulatorEnabled, this.gameState.settings.autoPoliceRoles, enableBots, botCount);
+                    });
+                }
+                // Update compact role preview
+                const mrp = document.getElementById('mobileRolePreview');
+                if (mrp) {
+                    mrp.textContent = `Preview: ${this.gameState.settings.mafiaCount} Mafia, Detective, Doctor, Civilians`; // simple summary
+                }
+            } else {
+                mobileSettings.classList.remove('show');
+            }
+        }
+
         // Update mobile phase bar
         this.updateMobilePhaseBar();
     }

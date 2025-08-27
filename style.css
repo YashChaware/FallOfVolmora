@@ -271,6 +271,11 @@ body.night-phase {
 	.room-details, .win-stats, .room-settings {
 		display: none !important;
 	}
+	/* Compact mobile settings: hidden by default, shown for host */
+	.mobile-lobby-settings { display: none; margin: 8px 0; padding: 8px; border: 1px solid #4a5568; border-radius: 10px; background: rgba(0,0,0,0.35); }
+	.mobile-lobby-settings.show { display: block; }
+	.mobile-lobby-settings .mls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+	.mobile-lobby-settings label { color: #e0e0e0; }
 }
 
 /* Room Selection Styles */

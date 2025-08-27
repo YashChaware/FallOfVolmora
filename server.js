@@ -1737,12 +1737,14 @@ io.on('connection', (socket) => {
         room.players.set(socket.id, player);
         socket.join(roomCode);
         
-        // Check if we should add bots to reach minimum players
-        if (!room.tutorial?.enabled && shouldAddBots(roomCode)) {
-            addBotsToRoom(roomCode);
-        }
-        
-        // Add to public lobbies if it's public
+        		// Check if we should add bots to reach minimum players
+		if (!room.tutorial?.enabled && shouldAddBots(roomCode)) {
+			addBotsToRoom(roomCode);
+			// Immediately broadcast updated state so host sees bots in lobby
+			broadcastGameStateToRoom(roomCode);
+		}
+		
+		// Add to public lobbies if it's public
         if (room.isPublic) {
             publicLobbies.set(roomCode, {
                 roomCode: roomCode,
@@ -2217,25 +2219,22 @@ io.on('connection', (socket) => {
             room.settings.inviteQuota = isNaN(q) ? room.settings.inviteQuota : q;
         }
         
-        // Handle bot settings changes
-        if (enableBots !== undefined || botCount !== undefined) {
-            const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
-            
-            if (!room.settings.enableBots) {
-                // Bots disabled - remove all bots
-                removeBotsFromRoom(roomCode);
-            } else if (shouldAddBots(roomCode)) {
-                // Remove existing bots and add new ones based on settings
-                removeBotsFromRoom(roomCode);
-                addBotsToRoom(roomCode);
-            } else if (humanPlayerCount >= 4) {
-                // Enough human players - remove bots
-                removeBotsFromRoom(roomCode);
-            }
-        }
-        
-        // Broadcast updated settings to all players in room
-        io.to(roomCode).emit('roomSettingsUpdated', {
+        		// Handle bot settings changes
+		if (enableBots !== undefined || botCount !== undefined) {
+			const humanPlayerCount = Array.from(room.players.values()).filter(p => !p.isBot).length;
+			
+			if (!room.settings.enableBots) {
+				// Bots disabled - remove all bots
+				removeBotsFromRoom(roomCode);
+			} else {
+				// Reconcile bot count to desired immediately
+				removeBotsFromRoom(roomCode);
+				addBotsToRoom(roomCode);
+			}
+		}
+		
+		// Broadcast updated settings to all players in room
+		io.to(roomCode).emit('roomSettingsUpdated', {
             maxPlayers: room.settings.maxPlayers,
             mafiaCount: room.settings.mafiaCount,
             suicideBomberEnabled: room.settings.suicideBomberEnabled,

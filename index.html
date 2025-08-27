@@ -638,6 +638,20 @@
                         <button class="btn-small" id="copyInviteLinkBtn">Copy Invite Link</button>
                         <button class="btn-small" id="openInviteFriendsBtn">Invite Friends</button>
                     </div>
+
+                    <!-- Compact mobile settings quick controls (host only) -->
+                    <div class="mobile-lobby-settings" id="mobileLobbySettings" style="display:none;">
+                        <div class="mls-row">
+                            <label>Players <input type="number" id="maxPlayersMobile" min="4" max="20" style="width:64px;"></label>
+                            <label>Mafia <input type="number" id="mafiaCountMobile" min="1" max="4" style="width:48px;"></label>
+                        </div>
+                        <div class="mls-row">
+                            <label><input type="checkbox" id="enableBotsMobile"> Bots</label>
+                            <label>Count <input type="number" id="botCountMobile" min="0" max="3" style="width:48px;"></label>
+                            <button class="btn-small" id="applyMobileSettingsBtn">Apply</button>
+                        </div>
+                        <small id="mobileRolePreview" class="help-text"></small>
+                    </div>
                     
                     <!-- Win Statistics -->
                     <div class="win-stats" id="winStats">

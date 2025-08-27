@@ -646,13 +646,14 @@ function generateRoles(playerCount, settings) {
         roles.push(ROLES.MAFIA);
     }
     
-    // Add police roles for 10+ players
-    if (playerCount >= 10 && autoPoliceRoles) {
-        roles.push(ROLES.WHITE_POLICE);
-        roles.push(ROLES.BLACK_POLICE);
-        roles.push(ROLES.GRAY_POLICE);
-        policeCount = 3;
-    }
+    	// Add police roles for 10+ players
+	if (playerCount >= 10 && autoPoliceRoles) {
+		// Start with three Gray Police; they will choose White or Black alignment later
+		roles.push(ROLES.GRAY_POLICE);
+		roles.push(ROLES.GRAY_POLICE);
+		roles.push(ROLES.GRAY_POLICE);
+		policeCount = 3;
+	}
     
     // Add one detective if enough players (minimum 5 players for detective)
     if (playerCount >= 5) {
@@ -2109,16 +2110,33 @@ io.on('connection', (socket) => {
                         description: ROLE_DESCRIPTIONS[player.role]
                     });
                 }
-                if (mafiaMembers.length > 1) {
-                    mafiaMembers.forEach(mafiaPlayer => {
-                        const teammates = mafiaMembers.filter(member => member.id !== mafiaPlayer.id);
-                        io.to(mafiaPlayer.id).emit('mafiaTeamInfo', {
-                            teammates: teammates,
-                            message: `Your mafia teammates: ${teammates.map(t => t.name).join(', ')}`
-                        });
-                    });
-                }
-                room.gameStarted = true;
+                				if (mafiaMembers.length > 1) {
+					mafiaMembers.forEach(mafiaPlayer => {
+						const teammates = mafiaMembers.filter(member => member.id !== mafiaPlayer.id);
+						io.to(mafiaPlayer.id).emit('mafiaTeamInfo', {
+							teammates: teammates,
+							message: `Your mafia teammates: ${teammates.map(t => t.name).join(', ')}`
+						});
+					});
+				}
+
+				// Inform Detective and Police about police presence (names only, colors hidden)
+				const policeMembers = Array.from(room.players.entries())
+					.filter(([id, p]) => p.role === ROLES.GRAY_POLICE || p.role === ROLES.WHITE_POLICE || p.role === ROLES.BLACK_POLICE)
+					.map(([id, p]) => ({ id, name: p.name }));
+				for (const [pid, rp] of room.players) {
+					if (rp.role === ROLES.DETECTIVE || rp.role === ROLES.WHITE_POLICE || rp.role === ROLES.BLACK_POLICE || rp.role === ROLES.GRAY_POLICE) {
+						io.to(pid).emit('policeTeamInfo', { members: policeMembers });
+					}
+				}
+				// Prompt Gray Police to choose alignment
+				for (const [pid, rp] of room.players) {
+					if (rp.role === ROLES.GRAY_POLICE && !room.deadPlayers.has(pid)) {
+						io.to(pid).emit('policeAlignmentChoice');
+					}
+				}
+
+				room.gameStarted = true;
                 room.gameStartTime = Date.now();
                 const botManager = getBotManager(roomCode);
                 if (botManager) {
@@ -2625,40 +2643,88 @@ io.on('connection', (socket) => {
         console.log(`Chat in room ${roomCode} - ${playerName}: ${message.trim()}`);
     });
 
-    // Mafia chat message handler (only for mafia members)
-    socket.on('mafiaChatMessage', (data) => {
-        const { roomCode, message, playerName } = data;
-        const room = rooms.get(roomCode);
-        
-        if (!room || !room.players.has(socket.id)) {
-            return;
-        }
+    	// Mafia chat message handler (only for mafia members)
+	socket.on('mafiaChatMessage', (data) => {
+		const { roomCode, message, playerName } = data;
+		const room = rooms.get(roomCode);
+		
+		if (!room || !room.players.has(socket.id)) {
+			return;
+		}
 
-        const player = room.players.get(socket.id);
-        
-        // Only mafia members and black police can send mafia chat
-        if (player.role !== ROLES.MAFIA && player.role !== ROLES.BLACK_POLICE && player.role !== ROLES.SUICIDE_BOMBER && player.role !== ROLES.MANIPULATOR) {
-            socket.emit('error', 'Only Mafia members can use this chat');
-            return;
-        }
+		const player = room.players.get(socket.id);
+		
+		// Only mafia members and black police can send mafia chat
+		if (player.role !== ROLES.MAFIA && player.role !== ROLES.BLACK_POLICE && player.role !== ROLES.SUICIDE_BOMBER && player.role !== ROLES.MANIPULATOR) {
+			socket.emit('error', 'Only Mafia members can use this chat');
+			return;
+		}
 
-        // Validate message
-        if (!message || message.trim().length === 0 || message.length > 200) {
-            return;
-        }
+		// Validate message
+		if (!message || message.trim().length === 0 || message.length > 200) {
+			return;
+		}
 
-        // Broadcast to mafia-aligned participants (mafia, suicide_bomber, manipulator) and black police observers
-        for (const [playerId, roomPlayer] of room.players) {
-            if (roomPlayer.role === ROLES.MAFIA || roomPlayer.role === ROLES.SUICIDE_BOMBER || roomPlayer.role === ROLES.MANIPULATOR || roomPlayer.role === ROLES.BLACK_POLICE) {
-                io.to(playerId).emit('mafiaChatMessage', {
-                    playerName: playerName,
-                    message: message.trim()
-                });
-            }
-        }
+		// Broadcast to mafia-aligned participants (mafia, suicide_bomber, manipulator) and black police observers
+		for (const [playerId, roomPlayer] of room.players) {
+			if (roomPlayer.role === ROLES.MAFIA || roomPlayer.role === ROLES.SUICIDE_BOMBER || roomPlayer.role === ROLES.MANIPULATOR || roomPlayer.role === ROLES.BLACK_POLICE) {
+				io.to(playerId).emit('mafiaChatMessage', {
+					playerName: playerName,
+					message: message.trim()
+				});
+			}
+		}
 
-        console.log(`Mafia chat in room ${roomCode} - ${playerName}: ${message.trim()}`);
-    });
+		console.log(`Mafia chat in room ${roomCode} - ${playerName}: ${message.trim()}`);
+	});
+
+	// Police chat for Detective + all Police (Gray, White, Black)
+	socket.on('policeChatMessage', (data) => {
+		const { roomCode, message, playerName } = data;
+		const room = rooms.get(roomCode);
+		if (!room || !room.players.has(socket.id)) return;
+		const player = room.players.get(socket.id);
+		if (player.role !== ROLES.DETECTIVE && player.role !== ROLES.GRAY_POLICE && player.role !== ROLES.WHITE_POLICE && player.role !== ROLES.BLACK_POLICE) {
+			socket.emit('error', 'Only Detective/Police can use this chat');
+			return;
+		}
+		if (!message || message.trim().length === 0 || message.length > 200) return;
+		for (const [playerId, roomPlayer] of room.players) {
+			if (roomPlayer.role === ROLES.DETECTIVE || roomPlayer.role === ROLES.GRAY_POLICE || roomPlayer.role === ROLES.WHITE_POLICE || roomPlayer.role === ROLES.BLACK_POLICE) {
+				io.to(playerId).emit('policeChatMessage', { playerName, message: message.trim() });
+			}
+		}
+		console.log(`Police chat in room ${roomCode} - ${playerName}: ${message.trim()}`);
+	});
+
+	// Gray Police choose alignment => becomes WHITE_POLICE or BLACK_POLICE
+	socket.on('choosePoliceAlignment', (data) => {
+		try {
+			const { roomCode, alignment } = data || {};
+			const room = rooms.get(roomCode);
+			if (!room) return;
+			const p = room.players.get(socket.id);
+			if (!p || p.role !== ROLES.GRAY_POLICE) return;
+			if (alignment !== 'white' && alignment !== 'black') return;
+			p.role = alignment === 'white' ? ROLES.WHITE_POLICE : ROLES.BLACK_POLICE;
+			room.players.set(socket.id, p);
+			// If black, grant mafia chat visibility implicitly via checks above
+			io.to(socket.id).emit('roleAssigned', { role: p.role, description: ROLE_DESCRIPTIONS[p.role] || '' });
+			// Re-emit police roster to detective/police with updated roles (still hidden colors to others)
+			const policeMembers = Array.from(room.players.entries())
+				.filter(([id, rp]) => rp.role === ROLES.GRAY_POLICE || rp.role === ROLES.WHITE_POLICE || rp.role === ROLES.BLACK_POLICE)
+				.map(([id, rp]) => ({ id, name: rp.name }));
+			for (const [pid, rp] of room.players) {
+				if (rp.role === ROLES.DETECTIVE || rp.role === ROLES.WHITE_POLICE || rp.role === ROLES.BLACK_POLICE || rp.role === ROLES.GRAY_POLICE) {
+					io.to(pid).emit('policeTeamInfo', { members: policeMembers });
+				}
+			}
+			broadcastGameStateToRoom(roomCode);
+			console.log(`${p.name} chose ${alignment.toUpperCase()} Police in room ${roomCode}`);
+		} catch (e) {
+			console.error('choosePoliceAlignment error:', e);
+		}
+	});
 
     // Handle players leaving rooms voluntarily
     socket.on('leaveRoom', (roomCode) => {

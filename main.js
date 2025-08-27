@@ -299,6 +299,8 @@ class VelmoraGame {
         const chatInput = document.getElementById('chatInput');
         const sendMafiaChatBtn = document.getElementById('sendMafiaChatButton');
         const mafiaInput = document.getElementById('mafiaInput');
+        const sendPoliceChatBtn = document.getElementById('sendPoliceChatButton');
+        const policeInput = document.getElementById('policeInput');
         
         if (sendChatBtn) {
             sendChatBtn.addEventListener('click', () => this.sendChat());
@@ -318,6 +320,17 @@ class VelmoraGame {
         if (mafiaInput) {
             mafiaInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') this.sendMafiaChat();
+            });
+        }
+
+        // Police chat events
+        if (sendPoliceChatBtn) {
+            sendPoliceChatBtn.addEventListener('click', () => this.sendPoliceChat());
+        }
+        
+        if (policeInput) {
+            policeInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.sendPoliceChat();
             });
         }
 
@@ -1038,6 +1051,22 @@ class VelmoraGame {
         this.socket.on('gameStarting', (data) => {
             this.showGameStartNotification(data);
             // Comic intro removed - game flows directly to game screen
+        });
+
+        // Police chat inbound
+        this.socket.on('policeChatMessage', (data) => {
+            this.addPoliceChatMessage(data.playerName, data.message, data.playerName === this.playerName);
+        });
+
+        // Inform detective/police of team presence (names but hidden colors)
+        this.socket.on('policeTeamInfo', (data) => {
+            const names = (data?.members || []).map(m => m.name).join(', ');
+            if (names) this.showToast(`🚔 Police present: ${names} (colors hidden)`, 'info');
+        });
+
+        // Prompt gray police to choose alignment
+        this.socket.on('policeAlignmentChoice', () => {
+            this.showPoliceAlignmentChoice();
         });
     }
 
@@ -2130,6 +2159,16 @@ class VelmoraGame {
 
         // Also refresh mobile bar when role changes
         this.updateMobilePhaseBar();
+
+        // Show/hide police chat for detective and any police (white/black/gray)
+        const policeChatPanel = document.getElementById('policeChatPanel');
+        if (policeChatPanel) {
+            if (this.playerRole === 'detective' || this.playerRole === 'white_police' || this.playerRole === 'black_police' || this.playerRole === 'gray_police') {
+                policeChatPanel.style.display = 'block';
+            } else {
+                policeChatPanel.style.display = 'none';
+            }
+        }
     }
 
     showRoleInfo(role, description) {
@@ -3884,6 +3923,12 @@ class VelmoraGame {
         if (mafiaMessages) {
             mafiaMessages.innerHTML = '';
         }
+
+        // Clear police chat messages
+        const policeMessages = document.getElementById('policeMessages');
+        if (policeMessages) {
+            policeMessages.innerHTML = '';
+        }
     }
 
     // Comic System Methods
@@ -4688,6 +4733,64 @@ class VelmoraGame {
         }
         bar.textContent = `${phase.toUpperCase()} • ${timerText}${roleText}${hint}`;
         bar.style.display = 'block';
+    }
+
+    sendPoliceChat() {
+        const input = document.getElementById('policeInput');
+        if (!input) return;
+        const text = input.value.trim();
+        if (!text || text.length > 200) return;
+        if (this.currentRoomCode) {
+            this.socket.emit('policeChatMessage', { roomCode: this.currentRoomCode, message: text, playerName: this.playerName });
+            input.value = '';
+        }
+    }
+
+    addPoliceChatMessage(playerName, message, own) {
+        const list = document.getElementById('policeMessages');
+        if (!list) return;
+        const div = document.createElement('div');
+        div.className = own ? 'chat-message own' : 'chat-message';
+        div.innerHTML = `<strong>${playerName}</strong>: ${this.escapeHtml(message)}`;
+        list.appendChild(div);
+        list.scrollTop = list.scrollHeight;
+    }
+
+    showPoliceAlignmentChoice() {
+        // Simple inline modal using existing modal styles
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+        const title = document.createElement('h3');
+        title.textContent = 'Choose Police Alignment';
+        const desc = document.createElement('p');
+        desc.textContent = 'You currently appear as Gray Police. Choose to align with White (Town) or Black (Mafia).';
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '0.5rem';
+        actions.style.justifyContent = 'center';
+        const whiteBtn = document.createElement('button');
+        whiteBtn.className = 'btn-primary';
+        whiteBtn.textContent = 'Become White Police';
+        const blackBtn = document.createElement('button');
+        blackBtn.className = 'btn-secondary';
+        blackBtn.textContent = 'Become Black Police';
+        whiteBtn.onclick = () => { this.choosePoliceAlignment('white'); document.body.removeChild(modal); };
+        blackBtn.onclick = () => { this.choosePoliceAlignment('black'); document.body.removeChild(modal); };
+        actions.appendChild(whiteBtn);
+        actions.appendChild(blackBtn);
+        content.appendChild(title);
+        content.appendChild(desc);
+        content.appendChild(actions);
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+    }
+
+    choosePoliceAlignment(alignment) {
+        if (!this.currentRoomCode) return;
+        this.socket.emit('choosePoliceAlignment', { roomCode: this.currentRoomCode, alignment });
     }
 }
 

@@ -3499,7 +3499,7 @@ class VelmoraGame {
         this.ctx.fill();
         
         // Draw center logo/symbol based on phase (reduced size for compactness)
-        const phaseEmojiFont = (this.getIsMobile && this.getIsMobile()) ? 'bold 24px Arial' : 'bold 28px Arial';
+        const phaseEmojiFont = (this.getIsMobile && this.getIsMobile()) ? 'bold 12px Arial' : 'bold 14px Arial';
         this.ctx.font = phaseEmojiFont;
         this.ctx.textAlign = 'center';
         this.ctx.fillStyle = '#ffd700';

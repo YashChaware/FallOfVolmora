@@ -2086,14 +2086,11 @@ button:disabled {
 
 /* Mobile chat ordering and sizing tweaks */
 @media (max-width: 768px) {
-	.chat-section {
-		display: flex;
-		flex-direction: column;
-		padding: 1vh 2vw;
-	}
+	.chat-window-content { height: 100%; overflow-y: auto; display: flex; flex-direction: column; }
+	.chat-section { flex: 1 1 auto; min-height: 0; max-height: none; display: flex; flex-direction: column; padding: 1vh 2vw; }
 	.chat-section .chat-header { order: 0; }
-	.chat-section .chat-messages { order: 1; }
-		.chat-section .chat-input { order: 2; }
+	.chat-section .chat-messages { order: 1; flex: 1 1 0; min-height: 0; overflow-y: auto; }
+	.chat-section .chat-input { order: 2; }
 
 	/* Center input and send button; use responsive sizing */
 	.chat-input { justify-content: center; align-items: center; gap: 2vw; width: 100%; box-sizing: border-box; padding: 0.5rem 0; }
@@ -4093,5 +4090,10 @@ body.voting-phase {
 }
 
 @media (max-width: 768px) {
-	body.in-game .game-header { display: none !important; }
+	body.in-game .game-header { display: flex !important; align-items: center; padding: 6px 8px; min-height: 40px; }
+	body.in-game .game-header .game-title, 
+	body.in-game .game-header .game-info, 
+	body.in-game .game-header #authButtons, 
+	body.in-game .game-header #userInfo { display: none !important; }
+	body.in-game .game-header .hamburger-menu-inline { display: block !important; margin-left: auto; }
 }

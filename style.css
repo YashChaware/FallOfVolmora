@@ -2230,18 +2230,18 @@ button:disabled {
 
 /* Connection Status */
 .connection-status {
-    position: fixed;
-    bottom: 1rem;
-    right: 1rem;
-    background: rgba(0, 0, 0, 0.8);
-    padding: 0.4rem 0.8rem;
-    border-radius: 16px;
-    border: 1px solid #4a5568;
-    display: flex;
+    /* dot only; strip background/border/container */
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    background: transparent;
+    padding: 0;
+    border: none;
+    display: inline;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.9rem;
-    z-index: 100;
+    gap: 0;
+    font-size: 0;
+    z-index: 1000;
 }
 
 .status-indicator {

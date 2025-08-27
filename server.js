@@ -441,7 +441,9 @@ app.post('/api/lobbies/create', async (req, res) => {
             mafiaCount, 
             suicideBomberEnabled, 
             manipulatorEnabled, 
-            autoPoliceRoles 
+            autoPoliceRoles, 
+            enableBots,
+            botCount 
         } = req.body;
 
         // Validation
@@ -479,7 +481,10 @@ app.post('/api/lobbies/create', async (req, res) => {
             mafiaCount: parseInt(mafiaCount),
             suicideBomberEnabled: !!suicideBomberEnabled,
             manipulatorEnabled: !!manipulatorEnabled,
-            autoPoliceRoles: autoPoliceRoles !== false
+            autoPoliceRoles: autoPoliceRoles !== false,
+            // Bot settings
+            enableBots: enableBots === true || enableBots === 'true',
+            botCount: (() => { const bc = parseInt(botCount); return isNaN(bc) ? 0 : Math.max(0, Math.min(bc, 3)); })()
         };
 
         res.json({

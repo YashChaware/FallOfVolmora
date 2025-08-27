@@ -1042,10 +1042,15 @@ class VelmoraGame {
             document.body.classList.remove('in-game');
             document.body.className = '';
             
-            // Make sure we're on the lobby screen
+            // Navigate to main menu and hide any room UI
             document.getElementById('gameScreen').style.display = 'none';
             document.getElementById('gameOverScreen').style.display = 'none';
-            document.getElementById('lobbyScreen').style.display = 'block';
+            document.getElementById('lobbyScreen').style.display = 'none';
+            const mainMenu = document.getElementById('mainMenuScreen');
+            if (mainMenu) mainMenu.style.display = 'block';
+            if (window.lobbyManager && typeof window.lobbyManager.showMainMenu === 'function') {
+                window.lobbyManager.showMainMenu();
+            }
         });
 
         this.socket.on('gameStarting', (data) => {

@@ -50,7 +50,8 @@ body.night-phase {
 
 /* Slightly taller canvas on mobile by reducing chat area height and margins */
 @media (max-width: 768px) {
-    .canvas-container { min-height: 70vh; }
+	/* Allow grid to size canvas naturally; prevents cropping bottom seats */
+	.canvas-container { min-height: auto; }
 }
 
 /* Game Status Bar */
@@ -241,14 +242,35 @@ body.night-phase {
 
 /* Lobby Styles */
 .lobby-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    text-align: center;
-    background: rgba(0, 0, 0, 0.3);
-    padding: 2.5rem;
-    border-radius: 20px;
-    border: 1px solid #4a5568;
-    backdrop-filter: blur(10px);
+	max-width: 1200px;
+	margin: 0 auto;
+	text-align: center;
+	background: rgba(0, 0, 0, 0.3);
+	padding: 2.5rem;
+	border-radius: 20px;
+	border: 1px solid #4a5568;
+	backdrop-filter: blur(10px);
+}
+
+/* Mobile compact lobby bar */
+@media (max-width: 768px) {
+	.mobile-lobby-bar {
+		display: flex !important;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.75rem;
+		margin: 0 0 10px 0;
+		padding: 8px 12px;
+		background: rgba(0,0,0,0.35);
+		border: 1px solid #4a5568;
+		border-radius: 10px;
+		color: #e0e0e0;
+		font-size: 0.9rem;
+	}
+	/* Hide verbose lobby info blocks on mobile */
+	.room-details, .win-stats, .room-settings {
+		display: none !important;
+	}
 }
 
 /* Room Selection Styles */
@@ -1214,15 +1236,15 @@ button:disabled {
 }
 
 .chat-section {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid #4a5568;
-    border-radius: 14px;
-    padding: 0.8rem;
-    display: flex;
-    flex-direction: column;
-    min-height: 130px;
-    max-height: 280px;
+	flex: 1;
+	background: rgba(0, 0, 0, 0.4);
+	border: 1px solid #4a5568;
+	border-radius: 14px;
+	padding: 0.8rem;
+	display: flex;
+	flex-direction: column;
+	min-height: 130px;
+	max-height: 360px;
 }
 
 .chat-section.mafia-chat {
@@ -1974,14 +1996,14 @@ button:disabled {
 }
 
 .chat-messages {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    padding: 0.8rem;
-    margin-bottom: 0.8rem;
-    overflow-y: auto;
-    max-height: 160px;
-    font-size: 0.9rem;
+	flex: 1 1 auto;
+	background: rgba(0, 0, 0, 0.5);
+	border-radius: 12px;
+	padding: 0.8rem;
+	margin-bottom: 0.8rem;
+	overflow-y: auto;
+	max-height: none;
+	font-size: 0.9rem;
 }
 
 .chat-message, .mafia-message {
@@ -2472,30 +2494,30 @@ body.voting-phase {
 }
 
 @media (max-width: 768px) {
-    #gameScreen {
-        grid-template-areas: 
-            "status"
-            "canvas"
-            "chat";
-        grid-template-rows: auto 1fr 28vh;
-        grid-template-columns: 1fr;
-    }
-    
-    .chat-window {
-        border-left: none;
-        border-top: 0.4vh solid #4ecdc4;
-        box-shadow: 0 -2vh 3vh rgba(0, 0, 0, 0.8);
-    }
-    
-    .chat-window-content {
-        gap: 1.2vh;
-        padding: 1.2vh 2vw;
-    }
-    
-    .chat-section {
-        min-height: 14vh;
-        max-height: 18vh;
-    }
+	#gameScreen {
+		grid-template-areas: 
+			"status"
+			"canvas"
+			"chat";
+		grid-template-rows: auto 1fr 38vh;
+		grid-template-columns: 1fr;
+	}
+	
+	.chat-window {
+		border-left: none;
+		border-top: 0.4vh solid #4ecdc4;
+		box-shadow: 0 -2vh 3vh rgba(0, 0, 0, 0.8);
+	}
+	
+	.chat-window-content {
+		gap: 1.2vh;
+		padding: 1.2vh 2vw;
+	}
+	
+	.chat-section {
+		min-height: 16vh;
+		max-height: 30vh;
+	}
     
     .game-status-bar {
         flex-direction: row;

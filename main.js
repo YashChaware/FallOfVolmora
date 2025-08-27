@@ -1365,6 +1365,19 @@ class VelmoraGame {
             }
         });
 
+        // Update compact mobile lobby bar
+        const mobileBar = document.getElementById('mobileLobbyBar');
+        if (mobileBar) {
+            const playerCount = this.gameState.playerCount || (this.gameState.players ? this.gameState.players.length : 0) || 0;
+            const maxPlayers = this.gameState.settings?.maxPlayers || 10;
+            if (this.currentScreen === 'lobby') {
+                mobileBar.style.display = 'flex';
+                mobileBar.textContent = `Room ${this.currentRoomCode || ''} · ${playerCount}/${maxPlayers} players`;
+            } else {
+                mobileBar.style.display = 'none';
+            }
+        }
+
         // Update role display
         this.updateRoleDisplay();
 

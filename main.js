@@ -3493,23 +3493,9 @@ class VelmoraGame {
         this.ctx.arc(centerX, centerY, tableRadius, 0, 2 * Math.PI);
         this.ctx.fill();
         
-        // Draw table inner surface
-        const innerRadius = tableRadius * 0.7;
-        const innerGradient = this.ctx.createRadialGradient(
-            centerX - 30, centerY - 30, 0,
-            centerX, centerY, innerRadius
-        );
-        innerGradient.addColorStop(0, '#A0522D');
-        innerGradient.addColorStop(0.5, '#8B4513');
-        innerGradient.addColorStop(1, '#654321');
-        
-        this.ctx.fillStyle = innerGradient;
-        this.ctx.beginPath();
-        this.ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
-        this.ctx.fill();
-        
-        // Draw center logo/symbol based on phase
-        this.ctx.font = 'bold 48px Arial';
+        // Draw center logo/symbol based on phase (reduced size for compactness)
+        const phaseEmojiFont = (this.getIsMobile && this.getIsMobile()) ? 'bold 32px Arial' : 'bold 36px Arial';
+        this.ctx.font = phaseEmojiFont;
         this.ctx.textAlign = 'center';
         this.ctx.fillStyle = '#ffd700';
         this.ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
@@ -3526,12 +3512,12 @@ class VelmoraGame {
         }
         
         // Draw center text
-        this.ctx.font = 'bold 24px Arial';
+        this.ctx.font = (this.getIsMobile && this.getIsMobile()) ? 'bold 18px Arial' : 'bold 20px Arial';
         this.ctx.fillStyle = '#ffd700';
         this.ctx.fillText('Volmora', centerX, centerY + 20);
         
         // Draw phase info
-        this.ctx.font = 'bold 16px Arial';
+        this.ctx.font = (this.getIsMobile && this.getIsMobile()) ? 'bold 12px Arial' : 'bold 14px Arial';
         this.ctx.fillStyle = '#4ecdc4';
         if (this.gameState.phase) {
             this.ctx.fillText(this.gameState.phase.toUpperCase(), centerX, centerY + 40);
@@ -3543,7 +3529,7 @@ class VelmoraGame {
             const seconds = this.gameState.timeRemaining % 60;
             const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
             
-            this.ctx.font = 'bold 18px Arial';
+            this.ctx.font = (this.getIsMobile && this.getIsMobile()) ? 'bold 14px Arial' : 'bold 16px Arial';
             this.ctx.fillStyle = this.gameState.timeRemaining <= 30 ? '#e53e3e' : '#4ecdc4';
             this.ctx.fillText(timeText, centerX, centerY + 60);
         }
@@ -3803,98 +3789,94 @@ class VelmoraGame {
         // Draw game info panel at top of canvas
         const panelWidth = Math.min(this.canvas.width * 0.8, 600);
         const isMobile = this.getIsMobile && this.getIsMobile();
-        const panelHeight = isMobile ? 84 : 96;
-        const panelX = (this.canvas.width - panelWidth) / 2;
-        const panelY = 20;
-        
-        // Draw panel background
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.ctx.strokeStyle = '#4ecdc4';
-        this.ctx.lineWidth = 2;
-        this.ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
-        this.ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
-        
-        // Draw role info
-        if (this.playerRole) {
-            const roleEmojis = {
-                'mafia': '🔪',
-                'detective': '🔍', 
-                'civilian': '👥',
-                'doctor': '💚'
-            };
-            const emoji = roleEmojis[this.playerRole] || '🎭';
-            const roleName = this.playerRole.charAt(0).toUpperCase() + this.playerRole.slice(1);
-            
-            this.ctx.font = 'bold 16px Arial';
-            this.ctx.fillStyle = '#4ecdc4';
-            this.ctx.textAlign = 'left';
-            this.ctx.fillText(`${emoji} Role: ${roleName}`, panelX + 20, panelY + 24);
-        }
-        
-        // Draw game phase and day info
-        this.ctx.font = 'bold 14px Arial';
-        this.ctx.fillStyle = '#ffd700';
-        if (this.gameState.phase) {
-            this.ctx.fillText(`Phase: ${this.gameState.phase.toUpperCase()}`, panelX + 20, panelY + 44);
-        }
-        
-        if (this.gameState.dayCount > 0) {
-            this.ctx.fillText(`Day: ${this.gameState.dayCount}`, panelX + 200, panelY + 44);
-        }
-        
-        // Draw timer
-        if (this.gameState.timeRemaining > 0) {
-            const minutes = Math.floor(this.gameState.timeRemaining / 60);
-            const seconds = this.gameState.timeRemaining % 60;
-            const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            
-            this.ctx.font = 'bold 20px Arial';
-            this.ctx.fillStyle = this.gameState.timeRemaining <= 30 ? '#e53e3e' : '#4ecdc4';
-            this.ctx.textAlign = 'right';
-            this.ctx.fillText(`Time: ${timeText}`, panelX + panelWidth - 20, panelY + 36);
-        }
-        
-        // Draw player counts
-        let alivePlayers = 0;
-        let deadPlayers = 0;
-        if (this.gameState.alivePlayers) alivePlayers = this.gameState.alivePlayers.length;
-        if (this.gameState.deadPlayers) deadPlayers = this.gameState.deadPlayers.length;
-        
-        this.ctx.font = '12px Arial';
-        this.ctx.fillStyle = '#a0aec0';
-        this.ctx.textAlign = 'right';
-        this.ctx.fillText(`Alive: ${alivePlayers} | Dead: ${deadPlayers}`, panelX + panelWidth - 20, panelY + 60);
-        
-        // Draw instructions based on role and phase
-        let instruction = '';
-        if (this.gameState.phase === 'day' && !this.isDead()) {
-            instruction = '💬 Click players to vote for elimination';
-        } else if (this.gameState.phase === 'night' && !this.isDead()) {
-            if (this.playerRole === 'mafia') {
-                instruction = '🔪 Choose a player to eliminate (processed at dawn)';
-            } else if (this.playerRole === 'detective') {
-                instruction = '🔍 Click players to investigate them';
-            } else if (this.playerRole === 'doctor') {
-                instruction = '💚 Click players to protect them (including yourself!)';
-            } else {
-                instruction = '😴 Wait for other players to complete their actions';
-            }
-        } else if (this.isDead()) {
-            instruction = '👻 You are dead - watch the game unfold';
-        }
-        
-        if (instruction) {
-            this.ctx.font = '11px Arial';
-            this.ctx.fillStyle = '#4ecdc4';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(instruction, panelX + panelWidth / 2, panelY + (panelHeight - 12));
-        }
-        
-        // Draw dynamic voting information during day phase
-        if (this.gameState.phase === 'day' && this.votingVisualizationData && this.votingVisualizationData.voteDetails.length > 0) {
-            this.drawVotingStatus(panelX, panelY, panelWidth, panelHeight);
-        }
-    }
+        // Reduce height to roughly half of previous compact size
+        const panelHeight = isMobile ? 44 : 52;
+         const panelX = (this.canvas.width - panelWidth) / 2;
+         const panelY = 20;
+         
+         // Draw panel background
+         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+         this.ctx.strokeStyle = '#4ecdc4';
+         this.ctx.lineWidth = 2;
+         this.ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+         this.ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+         
+         // Draw role info
+         if (this.playerRole) {
+             const roleEmojis = {
+                 'mafia': '🔪',
+                 'detective': '🔍', 
+                 'civilian': '👥',
+                 'doctor': '💚'
+             };
+             const emoji = roleEmojis[this.playerRole] || '🎭';
+             const roleName = this.playerRole.charAt(0).toUpperCase() + this.playerRole.slice(1);
+             
+             this.ctx.font = 'bold 14px Arial';
+             this.ctx.fillStyle = '#4ecdc4';
+             this.ctx.textAlign = 'left';
+             this.ctx.fillText(`${emoji} Role: ${roleName}`, panelX + 16, panelY + 18);
+         }
+         
+         // Draw game phase and day info
+         this.ctx.font = 'bold 12px Arial';
+         this.ctx.fillStyle = '#ffd700';
+         if (this.gameState.phase) {
+             this.ctx.fillText(`Phase: ${this.gameState.phase.toUpperCase()}`, panelX + 16, panelY + 34);
+         }
+         
+         if (this.gameState.dayCount > 0) {
+             this.ctx.fillText(`Day: ${this.gameState.dayCount}`, panelX + 180, panelY + 34);
+         }
+         
+         // Draw timer
+         if (this.gameState.timeRemaining > 0) {
+             const minutes = Math.floor(this.gameState.timeRemaining / 60);
+             const seconds = this.gameState.timeRemaining % 60;
+             const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+             
+             this.ctx.font = 'bold 16px Arial';
+             this.ctx.fillStyle = this.gameState.timeRemaining <= 30 ? '#e53e3e' : '#4ecdc4';
+             this.ctx.textAlign = 'right';
+             this.ctx.fillText(`Time: ${timeText}`, panelX + panelWidth - 16, panelY + 28);
+         }
+         
+         // Draw player counts
+         let alivePlayers = 0;
+         let deadPlayers = 0;
+         if (this.gameState.alivePlayers) alivePlayers = this.gameState.alivePlayers.length;
+         if (this.gameState.deadPlayers) deadPlayers = this.gameState.deadPlayers.length;
+         
+         this.ctx.font = '11px Arial';
+         this.ctx.fillStyle = '#a0aec0';
+         this.ctx.textAlign = 'right';
+         this.ctx.fillText(`Alive: ${alivePlayers} | Dead: ${deadPlayers}`, panelX + panelWidth - 16, panelY + 44);
+         
+         // Draw instructions based on role and phase (omit in compact mode)
+         let instruction = '';
+         if (this.gameState.phase === 'day' && !this.isDead()) {
+             instruction = '💬 Click players to vote for elimination';
+         } else if (this.gameState.phase === 'night' && !this.isDead()) {
+             if (this.playerRole === 'mafia') {
+                 instruction = '🔪 Choose a player to eliminate (processed at dawn)';
+             } else if (this.playerRole === 'detective') {
+                 instruction = '🔍 Click players to investigate them';
+             } else if (this.playerRole === 'doctor') {
+                 instruction = '💚 Click players to protect them (including yourself!)';
+             } else {
+                 instruction = '😴 Wait for other players to complete their actions';
+             }
+         } else if (this.isDead()) {
+             instruction = '👻 You are dead - watch the game unfold';
+         }
+         
+         // Skip drawing instruction line to keep panel ultra-compact
+         
+         // Draw dynamic voting information during day phase
+         if (this.gameState.phase === 'day' && this.votingVisualizationData && this.votingVisualizationData.voteDetails.length > 0) {
+             this.drawVotingStatus(panelX, panelY, panelWidth, panelHeight);
+         }
+     }
 
     drawVotingStatus(panelX, panelY, panelWidth, panelHeight) {
         // Compact voting panel that avoids overlapping the table/players

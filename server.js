@@ -3034,6 +3034,31 @@ io.on('connection', (socket) => {
         room.tutorial.forceRole = forceRole || stepRoleMap[room.tutorial.step] || ROLES.CIVILIAN;
         socket.emit('tutorialStepSet', { tutorial: room.tutorial });
     });
+
+	// Handle host closing the game immediately
+	socket.on('closeGame', (roomCode) => {
+		try {
+			const room = rooms.get(roomCode);
+			if (!room) { socket.emit('error', 'Room not found'); return; }
+			if (socket.id !== room.hostId) { socket.emit('error', 'Only the host can close the game'); return; }
+			// End the game and return everyone to lobby state
+			room.phase = 'gameOver';
+			io.to(roomCode).emit('gameClosed', { message: 'Host closed the game' });
+			resetGameState(roomCode);
+			io.to(roomCode).emit('returnedToLobby', {
+				message: 'Game closed by host. Returned to lobby.',
+				resetBy: room.players.get(socket.id)?.name || 'Host',
+				playerCount: room.players.size,
+				players: Array.from(room.players.values()).map(p => ({ id: p.id, name: p.name, role: p.role, alive: p.alive })),
+				hostId: room.hostId,
+				settings: room.settings
+			});
+			broadcastGameStateToRoom(roomCode);
+			console.log(`Game closed by host in room ${roomCode}; returned to lobby.`);
+		} catch (e) {
+			console.error('closeGame error:', e);
+		}
+	});
 });
 
 const PORT = process.env.PORT || 3000;

@@ -54,6 +54,12 @@ body.night-phase {
 	.canvas-container { min-height: auto; }
 }
 
+/* Connection status positioning */
+.connection-status { position: absolute; top: 6px; left: 8px; z-index: 1000; pointer-events: none; }
+.connection-status .status-indicator { margin-right: 6px; }
+#statusText { display: none; }
+@media (max-width: 768px) { .connection-status { top: 4px; left: 6px; } .connection-status .status-indicator { width: 10px; height: 10px; } }
+
 /* Game Status Bar */
 .game-status-bar {
     grid-area: status;
@@ -1893,6 +1899,17 @@ button:disabled {
     border: 2px solid #4ecdc4;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(78, 205, 196, 0.2);
     animation: gameStartSlide 0.8s ease-out;
+    max-width: 90vw;
+}
+@media (max-width: 768px) {
+	.game-start-overlay { padding: 16px; align-items: flex-start; }
+	.game-start-content { width: 100%; max-width: 92vw; margin: 24px auto 0 auto; padding: 1.25rem; border-radius: 14px; box-sizing: border-box; }
+	.game-start-content h2 { font-size: 1.4rem; margin-bottom: 1rem; }
+	.game-start-details { flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+	.game-start-content .stat-item .stat-number { font-size: 1.4rem; }
+	.game-start-content .stat-item .stat-label { font-size: 0.8rem; }
+	.start-message { font-size: 0.9rem; }
+	.loading-dots span { width: 6px; height: 6px; }
 }
 
 @keyframes gameStartSlide {
@@ -2076,18 +2093,26 @@ button:disabled {
 	}
 	.chat-section .chat-header { order: 0; }
 	.chat-section .chat-messages { order: 1; }
-	.chat-section .chat-input { order: 2; }
+		.chat-section .chat-input { order: 2; }
 
 	/* Center input and send button; use responsive sizing */
-	.chat-input { justify-content: center; align-items: center; gap: 2vw; }
-	.chat-input input { flex: 1 1 auto; max-width: 100%; padding: 1.5vh 2vw; }
-	.chat-input button { flex: 0 0 auto; padding: 1.5vh 3vw; font-size: 2.2vh; }
+	.chat-input { justify-content: center; align-items: center; gap: 2vw; width: 100%; box-sizing: border-box; padding: 0.5rem 0; }
+	.chat-input input { flex: 1 1 auto; max-width: 100%; padding: 1.5vh 2vw; width: 100%; box-sizing: border-box; }
+	.chat-input button { flex: 0 0 auto; padding: 1.5vh 3vw; font-size: 2.2vh; white-space: nowrap; }
 
 	/* Hide overlay instructions; use mobile bar instead */
 	.phase-instructions { display: none !important; }
 
-    /* Mobile phase bar styling */
-    #mobilePhaseBar {
+	/* Hide large overlays; use compact connection dot */
+	.panel-overlay.network-status, .game-start-overlay { display: none !important; }
+	.status-indicator { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: none; }
+	.status-indicator.connected { background: #22c55e; }
+	.status-indicator.connecting { background: #f59e0b; }
+	.status-indicator.disconnected { background: #ef4444; }
+	#statusText { display: none; }
+
+	/* Mobile phase bar styling */
+	#mobilePhaseBar {
         display: block;
         padding: 1vh 2vw;
         margin: 0 2vw 2vw 2vw;
@@ -2539,10 +2564,12 @@ body.voting-phase {
     
     .game-status-bar {
         flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
         gap: 0.5rem;
         text-align: left;
-        padding: 6px 1rem 12px 1rem;
-        min-height: 44px;
+        padding: 10px 1rem 16px 1rem;
+        min-height: 64px;
     }
     
     .room-info {

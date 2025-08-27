@@ -3456,11 +3456,16 @@ class VelmoraGame {
         this.ctx.globalAlpha = 1.0;
     }
 
+	// Simple device helper
+	getIsMobile() {
+		return (typeof window !== 'undefined') && (window.innerWidth <= 768 || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches));
+	}
+
 	// Compute table center Y with slight extra offset on mobile to prevent overlap with stats
 	getTableCenterY() {
-		const isMobile = (typeof window !== 'undefined') && (window.innerWidth <= 768 || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches));
-		// Default was 0.58; nudge down a bit more on mobile to create breathing room
-		return this.canvas.height * (isMobile ? 0.62 : 0.58);
+		const isMobile = this.getIsMobile();
+		// Default was 0.58; move further down on mobile for more breathing room
+		return this.canvas.height * (isMobile ? 0.66 : 0.58);
 	}
 
     drawRoundTable() {
@@ -3563,10 +3568,11 @@ class VelmoraGame {
         if (allPlayers.length === 0) return;
         
         const centerX = this.canvas.width / 2;
-        const centerY = this.getTableCenterY(); // Keep in sync with table Y
-        const tableRadius = Math.min(this.canvas.width, this.canvas.height) * 0.18;
-        const playerRadius = Math.min(this.canvas.width, this.canvas.height) * 0.22; // Seat ring radius scaled to canvas
-        const seatSize = Math.max(28, Math.min(42, Math.min(this.canvas.width, this.canvas.height) * 0.05));
+			const centerY = this.getTableCenterY(); // Keep in sync with table Y
+			const isMobile = this.getIsMobile();
+			const tableRadius = Math.min(this.canvas.width, this.canvas.height) * 0.18;
+			const playerRadius = Math.min(this.canvas.width, this.canvas.height) * (isMobile ? 0.20 : 0.22); // Slightly tighter on mobile
+			const seatSize = Math.max(28, Math.min(42, Math.min(this.canvas.width, this.canvas.height) * 0.05));
         
         // Store player positions for click detection
         this.playerPositions = [];
@@ -3796,7 +3802,8 @@ class VelmoraGame {
     drawGameStatsPanel() {
         // Draw game info panel at top of canvas
         const panelWidth = Math.min(this.canvas.width * 0.8, 600);
-        const panelHeight = 120;
+        const isMobile = this.getIsMobile && this.getIsMobile();
+        const panelHeight = isMobile ? 84 : 96;
         const panelX = (this.canvas.width - panelWidth) / 2;
         const panelY = 20;
         
@@ -3818,21 +3825,21 @@ class VelmoraGame {
             const emoji = roleEmojis[this.playerRole] || '🎭';
             const roleName = this.playerRole.charAt(0).toUpperCase() + this.playerRole.slice(1);
             
-            this.ctx.font = 'bold 18px Arial';
+            this.ctx.font = 'bold 16px Arial';
             this.ctx.fillStyle = '#4ecdc4';
             this.ctx.textAlign = 'left';
-            this.ctx.fillText(`${emoji} Role: ${roleName}`, panelX + 20, panelY + 30);
+            this.ctx.fillText(`${emoji} Role: ${roleName}`, panelX + 20, panelY + 24);
         }
         
         // Draw game phase and day info
-        this.ctx.font = 'bold 16px Arial';
+        this.ctx.font = 'bold 14px Arial';
         this.ctx.fillStyle = '#ffd700';
         if (this.gameState.phase) {
-            this.ctx.fillText(`Phase: ${this.gameState.phase.toUpperCase()}`, panelX + 20, panelY + 55);
+            this.ctx.fillText(`Phase: ${this.gameState.phase.toUpperCase()}`, panelX + 20, panelY + 44);
         }
         
         if (this.gameState.dayCount > 0) {
-            this.ctx.fillText(`Day: ${this.gameState.dayCount}`, panelX + 200, panelY + 55);
+            this.ctx.fillText(`Day: ${this.gameState.dayCount}`, panelX + 200, panelY + 44);
         }
         
         // Draw timer
@@ -3844,7 +3851,7 @@ class VelmoraGame {
             this.ctx.font = 'bold 20px Arial';
             this.ctx.fillStyle = this.gameState.timeRemaining <= 30 ? '#e53e3e' : '#4ecdc4';
             this.ctx.textAlign = 'right';
-            this.ctx.fillText(`Time: ${timeText}`, panelX + panelWidth - 20, panelY + 40);
+            this.ctx.fillText(`Time: ${timeText}`, panelX + panelWidth - 20, panelY + 36);
         }
         
         // Draw player counts
@@ -3853,10 +3860,10 @@ class VelmoraGame {
         if (this.gameState.alivePlayers) alivePlayers = this.gameState.alivePlayers.length;
         if (this.gameState.deadPlayers) deadPlayers = this.gameState.deadPlayers.length;
         
-        this.ctx.font = '14px Arial';
+        this.ctx.font = '12px Arial';
         this.ctx.fillStyle = '#a0aec0';
         this.ctx.textAlign = 'right';
-        this.ctx.fillText(`Alive: ${alivePlayers} | Dead: ${deadPlayers}`, panelX + panelWidth - 20, panelY + 70);
+        this.ctx.fillText(`Alive: ${alivePlayers} | Dead: ${deadPlayers}`, panelX + panelWidth - 20, panelY + 60);
         
         // Draw instructions based on role and phase
         let instruction = '';
@@ -3877,10 +3884,10 @@ class VelmoraGame {
         }
         
         if (instruction) {
-            this.ctx.font = '12px Arial';
+            this.ctx.font = '11px Arial';
             this.ctx.fillStyle = '#4ecdc4';
             this.ctx.textAlign = 'center';
-            this.ctx.fillText(instruction, panelX + panelWidth / 2, panelY + 95);
+            this.ctx.fillText(instruction, panelX + panelWidth / 2, panelY + (panelHeight - 12));
         }
         
         // Draw dynamic voting information during day phase
@@ -3890,66 +3897,97 @@ class VelmoraGame {
     }
 
     drawVotingStatus(panelX, panelY, panelWidth, panelHeight) {
-        // Draw voting status overlay/extension
-        const votingPanelHeight = 60;
-        const votingPanelY = panelY + panelHeight + 10;
-        
-        // Draw voting panel background
+        // Compact voting panel that avoids overlapping the table/players
+        const isMobile = this.getIsMobile();
+        const centerY = this.getTableCenterY();
+        const baseRadius = Math.min(this.canvas.width, this.canvas.height);
+        const playerRadius = baseRadius * (isMobile ? 0.20 : 0.22);
+        const seatSize = Math.max(28, Math.min(42, baseRadius * 0.05));
+        const playersTop = centerY - playerRadius - (seatSize / 2);
+        const playersBottom = centerY + playerRadius + (seatSize / 2);
+        const margin = 8;
+
+        // Base sizing (will shrink dynamically if needed)
+        let votingPanelHeight = isMobile ? 44 : 54;
+        const minPanelHeight = isMobile ? 32 : 40;
+        const widthFactor = isMobile ? 0.85 : 1.0;
+        const maxWidth = isMobile ? 380 : panelWidth;
+        const compactWidth = Math.min(this.canvas.width * widthFactor, maxWidth);
+        const votingPanelX = isMobile ? (this.canvas.width - compactWidth) / 2 : panelX;
+
+        // Preferred Y placement
+        let votingPanelY = isMobile ? (this.canvas.height - votingPanelHeight - 12) : (panelY + panelHeight + 10);
+
+        // Desktop: avoid overlapping the top edge of players
+        if (!isMobile) {
+            const overlapDown = votingPanelY + votingPanelHeight > (playersTop - margin);
+            if (overlapDown) {
+                // Try shrinking to fit the gap
+                const available = Math.max(0, (playersTop - margin) - votingPanelY);
+                votingPanelHeight = Math.max(minPanelHeight, Math.min(votingPanelHeight, Math.floor(available)));
+                // If still overlapping (no room), fallback to bottom position above chat
+                if (votingPanelY + votingPanelHeight > (playersTop - margin)) {
+                    votingPanelY = this.canvas.height - votingPanelHeight - 12;
+                }
+            }
+        } else {
+            // Mobile: avoid overlapping the bottom edge of players
+            const overlapUp = votingPanelY < (playersBottom + margin);
+            if (overlapUp) {
+                // Try shrinking first
+                const available = Math.max(0, this.canvas.height - 12 - (playersBottom + margin));
+                votingPanelHeight = Math.max(minPanelHeight, Math.min(votingPanelHeight, Math.floor(available)));
+                votingPanelY = this.canvas.height - votingPanelHeight - 12;
+                // If still overlapping (no room at bottom), fallback under top panel
+                if (votingPanelY < (playersBottom + margin)) {
+                    votingPanelY = panelY + panelHeight + 10;
+                }
+            }
+        }
+
+        // Draw background
         this.ctx.fillStyle = 'rgba(30, 30, 30, 0.9)';
         this.ctx.strokeStyle = '#ffd700';
         this.ctx.lineWidth = 2;
-        this.ctx.fillRect(panelX, votingPanelY, panelWidth, votingPanelHeight);
-        this.ctx.strokeRect(panelX, votingPanelY, panelWidth, votingPanelHeight);
-        
-        // Title
-        this.ctx.font = 'bold 14px Arial';
+        this.ctx.fillRect(votingPanelX, votingPanelY, compactWidth, votingPanelHeight);
+        this.ctx.strokeRect(votingPanelX, votingPanelY, compactWidth, votingPanelHeight);
+
+        // Typography scaled to height
+        const titleFont = votingPanelHeight <= 36 ? (isMobile ? 'bold 11px Arial' : 'bold 12px Arial') : (isMobile ? 'bold 12px Arial' : 'bold 14px Arial');
+        const metaFont = votingPanelHeight <= 36 ? (isMobile ? '10px Arial' : '11px Arial') : (isMobile ? '11px Arial' : '12px Arial');
+
+        // Title and progress
+        this.ctx.font = titleFont;
         this.ctx.fillStyle = '#ffd700';
         this.ctx.textAlign = 'left';
-        this.ctx.fillText('🗳️ Live Voting Status:', panelX + 15, votingPanelY + 20);
-        
-        // Voting progress
-        const votesProgress = `${this.votingVisualizationData.totalVotes}/${this.votingVisualizationData.alivePlayers} votes cast`;
-        this.ctx.font = '12px Arial';
+        this.ctx.fillText('🗳️ Voting', votingPanelX + 12, votingPanelY + (isMobile ? 16 : 18));
+
+        const votesProgress = `${this.votingVisualizationData.totalVotes}/${this.votingVisualizationData.alivePlayers}`;
+        this.ctx.font = metaFont;
         this.ctx.fillStyle = '#4ecdc4';
         this.ctx.textAlign = 'right';
-        this.ctx.fillText(votesProgress, panelX + panelWidth - 15, votingPanelY + 20);
-        
-        // Show vote breakdown compactly
+        this.ctx.fillText(votesProgress, votingPanelX + compactWidth - 12, votingPanelY + (isMobile ? 16 : 18));
+
+        // Single-line compact summary
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = '#e0e0e0';
+        const centerTextY = votingPanelY + Math.max( Math.floor(votingPanelHeight - 8), 16 );
         if (this.votingVisualizationData.voteDetails.length > 0) {
-            // Group votes by target
             const votesByTarget = new Map();
             this.votingVisualizationData.voteDetails.forEach(vote => {
-                if (!votesByTarget.has(vote.targetName)) {
-                    votesByTarget.set(vote.targetName, []);
-                }
-                votesByTarget.get(vote.targetName).push(vote.voterName);
+                if (!votesByTarget.has(vote.targetName)) votesByTarget.set(vote.targetName, 0);
+                votesByTarget.set(vote.targetName, votesByTarget.get(vote.targetName) + 1);
             });
-            
-            // Display compact summary
-            let summaryText = '';
-            const entries = Array.from(votesByTarget.entries());
-            if (entries.length <= 3) {
-                // Show all if 3 or fewer targets
-                summaryText = entries.map(([target, voters]) => 
-                    `${target} (${voters.length})`
-                ).join(' | ');
-            } else {
-                // Show top 2 and "others"
-                const sorted = entries.sort((a, b) => b[1].length - a[1].length);
-                summaryText = sorted.slice(0, 2).map(([target, voters]) => 
-                    `${target} (${voters.length})`
-                ).join(' | ') + ` + ${entries.length - 2} more`;
-            }
-            
-            this.ctx.font = '11px Arial';
-            this.ctx.fillStyle = '#a0aec0';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(summaryText, panelX + panelWidth / 2, votingPanelY + 45);
+            let leader = null;
+            votesByTarget.forEach((count, name) => {
+                if (!leader || count > leader.count) leader = { name, count };
+            });
+            const summary = leader ? `Lead: ${leader.name} (${leader.count})` : 'No votes cast yet';
+            this.ctx.font = titleFont;
+            this.ctx.fillText(summary, votingPanelX + compactWidth / 2, centerTextY);
         } else {
-            this.ctx.font = '11px Arial';
-            this.ctx.fillStyle = '#a0aec0';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('No votes cast yet', panelX + panelWidth / 2, votingPanelY + 45);
+            this.ctx.font = titleFont;
+            this.ctx.fillText('No votes cast yet', votingPanelX + compactWidth / 2, centerTextY);
         }
     }
 

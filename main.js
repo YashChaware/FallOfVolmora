@@ -3456,9 +3456,16 @@ class VelmoraGame {
         this.ctx.globalAlpha = 1.0;
     }
 
-    		drawRoundTable() {
+	// Compute table center Y with slight extra offset on mobile to prevent overlap with stats
+	getTableCenterY() {
+		const isMobile = (typeof window !== 'undefined') && (window.innerWidth <= 768 || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches));
+		// Default was 0.58; nudge down a bit more on mobile to create breathing room
+		return this.canvas.height * (isMobile ? 0.62 : 0.58);
+	}
+
+    drawRoundTable() {
 			const centerX = this.canvas.width / 2;
-			const centerY = this.canvas.height * 0.58; // Position table slightly above bottom for mobile safety
+			const centerY = this.getTableCenterY(); // Slightly lower on mobile to avoid overlapping stats
 			const tableRadius = Math.min(this.canvas.width, this.canvas.height) * 0.18; // Slightly smaller table for small screens
         
         // Draw table outer ring
@@ -3556,10 +3563,10 @@ class VelmoraGame {
         if (allPlayers.length === 0) return;
         
         const centerX = this.canvas.width / 2;
-        		const centerY = this.canvas.height * 0.58; // Keep in sync with table Y
-		const tableRadius = Math.min(this.canvas.width, this.canvas.height) * 0.18;
-		const playerRadius = Math.min(this.canvas.width, this.canvas.height) * 0.22; // Seat ring radius scaled to canvas
-		const seatSize = Math.max(28, Math.min(42, Math.min(this.canvas.width, this.canvas.height) * 0.05));
+        const centerY = this.getTableCenterY(); // Keep in sync with table Y
+        const tableRadius = Math.min(this.canvas.width, this.canvas.height) * 0.18;
+        const playerRadius = Math.min(this.canvas.width, this.canvas.height) * 0.22; // Seat ring radius scaled to canvas
+        const seatSize = Math.max(28, Math.min(42, Math.min(this.canvas.width, this.canvas.height) * 0.05));
         
         // Store player positions for click detection
         this.playerPositions = [];
@@ -3606,12 +3613,12 @@ class VelmoraGame {
                 displayName += ' 🔪';
             }
             
-            			this.ctx.fillText(displayName, x, y + 3);
+            this.ctx.fillText(displayName, x, y + 3);
 
-			// Ensure seats remain inside canvas; clamp Y
-			if (y + seatSize / 2 > this.canvas.height - 2) {
-				this.playerPositions[this.playerPositions.length - 1].y = this.canvas.height - 2 - seatSize / 2;
-			}
+            // Ensure seats remain inside canvas; clamp Y
+            if (y + seatSize / 2 > this.canvas.height - 2) {
+                this.playerPositions[this.playerPositions.length - 1].y = this.canvas.height - 2 - seatSize / 2;
+            }
             
             // Draw status indicator
             this.ctx.font = 'bold 16px Arial';

@@ -7,6 +7,8 @@ class LobbyManager {
         this.publicLobbies = [];
         this.searchTimeout = null;
         this.refreshInterval = null;
+        // Track where to return after visiting Settings
+        this.returnFromSettingsTo = null;
         this.init();
     }
 
@@ -183,6 +185,27 @@ class LobbyManager {
         this.currentScreen = screenId;
     }
 
+    // Helper: detect which primary screen is currently visible
+    getVisibleScreenId() {
+        const screenIds = [
+            'mainMenuScreen',
+            'createLobbyScreen',
+            'joinLobbyScreen',
+            'lobbyScreen',
+            'gameScreen',
+            'settingsScreen'
+        ];
+        for (const id of screenIds) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const style = window.getComputedStyle ? getComputedStyle(el) : el.style;
+            if (style.display !== 'none') {
+                return id;
+            }
+        }
+        return this.currentScreen;
+    }
+
     showMainMenu() {
         this.showScreen('mainMenuScreen');
         this.stopRefreshInterval();
@@ -200,21 +223,22 @@ class LobbyManager {
     }
 
     showSettings() {
+        // Capture the currently visible screen so we can return to it accurately
+        const visible = this.getVisibleScreenId();
+        if (visible && visible !== 'settingsScreen') {
+            this.returnFromSettingsTo = visible;
+        }
         this.showScreen('settingsScreen');
     }
 
     goBackFromSettings() {
-        // Return to the previous screen, or main menu if no previous screen
-        if (this.previousScreen && this.previousScreen !== 'settingsScreen') {
-            if (this.previousScreen === 'lobbyScreen') {
-                // If returning to lobby, ensure we display the lobby screen properly
-                this.showScreen('lobbyScreen');
-            } else {
-                this.showScreen(this.previousScreen);
-            }
-        } else {
-            this.showMainMenu();
+        // Prefer the explicitly captured screen, then fallback to previous, then main menu
+        let target = this.returnFromSettingsTo || this.previousScreen || 'mainMenuScreen';
+        if (target === 'settingsScreen') {
+            target = 'mainMenuScreen';
         }
+        this.returnFromSettingsTo = null;
+        this.showScreen(target);
     }
 
 
@@ -266,22 +290,22 @@ class LobbyManager {
 
                 const data = await response.json();
 
-                				if (response.ok) {
-					// Create the room on the socket server using the validated settings and code
-					const userData = window.authManager?.getUserForRoom();
-					if (window.game && window.game.socket && window.game.socket.connected) {
-						window.game.socket.emit('createRoom', {
-							roomCode: data.roomCode,
-							playerName: userData?.playerName || 'Player',
-							lobbyInfo: data.lobbyInfo
-						});
-						this.showNotification('Creating lobby...', 'info');
+					if (response.ok) {
+						// Create the room on the socket server using the validated settings and code
+						const userData = window.authManager?.getUserForRoom();
+						if (window.game && window.game.socket && window.game.socket.connected) {
+							window.game.socket.emit('createRoom', {
+								roomCode: data.roomCode,
+								playerName: userData?.playerName || 'Player',
+								lobbyInfo: data.lobbyInfo
+							});
+							this.showNotification('Creating lobby...', 'info');
+						} else {
+							this.showNotification('Game connection not ready. Please wait a moment and try again.', 'error');
+						}
 					} else {
-						this.showNotification('Game connection not ready. Please wait a moment and try again.', 'error');
+						this.showNotification(data.error || 'Failed to create lobby', 'error');
 					}
-				} else {
-					this.showNotification(data.error || 'Failed to create lobby', 'error');
-				}
             } else {
                 // Guest user or no auth - directly create room via socket
                 const guestPlayerNameInput = document.getElementById('guestPlayerName');

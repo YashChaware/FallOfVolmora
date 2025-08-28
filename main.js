@@ -1476,6 +1476,9 @@ class VelmoraGame {
 
         // Update mobile phase bar
         this.updateMobilePhaseBar();
+        
+        // Update chat input enabled/disabled state
+        this.updateChatInputs();
     }
 
     updatePlayerLists() {
@@ -1948,6 +1951,10 @@ class VelmoraGame {
     }
 
     vote(targetId) {
+        if (this.isDead()) {
+            this.showToast('👻 You are eliminated and cannot vote.', 'error');
+            return;
+        }
         // Play vote click sound
         if (window.audioManager) {
             window.audioManager.onVoteClick();
@@ -1963,6 +1970,10 @@ class VelmoraGame {
     }
 
     nightAction(action, targetId) {
+        if (this.isDead()) {
+            this.showToast('👻 You are eliminated and cannot act.', 'error');
+            return;
+        }
         this.socket.emit('nightAction', { 
             roomCode: this.currentRoomCode, 
             action, 
@@ -2166,6 +2177,8 @@ class VelmoraGame {
     }
 
     updateRoleDisplay() {
+        // Keep chat inputs enabled state in sync with role/phase changes
+        this.updateChatInputs();
         const roleDisplay = document.getElementById('currentRoleDisplay');
         if (roleDisplay) {
             if (this.playerRole && this.gameState.gameStarted) {
@@ -2706,6 +2719,10 @@ class VelmoraGame {
         const message = chatInput.value.trim();
         
         if (message) {
+            if (this.isDead()) {
+                this.showToast('👻 You are eliminated and cannot chat.', 'error');
+                return;
+            }
             // Send chat message to server
             this.socket.emit('chatMessage', {
                 roomCode: this.currentRoomCode,
@@ -2721,6 +2738,10 @@ class VelmoraGame {
         const message = mafiaInput.value.trim();
         
         if (message) {
+            if (this.isDead()) {
+                this.showToast('👻 You are eliminated and cannot chat.', 'error');
+                return;
+            }
             // Send mafia chat message to server
             this.socket.emit('mafiaChatMessage', {
                 roomCode: this.currentRoomCode,
@@ -3070,7 +3091,13 @@ class VelmoraGame {
 
     // Game loop for canvas rendering
     isDead() {
-        return this.gameState.deadPlayers.includes(this.playerId);
+        const dead = this.gameState && Array.isArray(this.gameState.deadPlayers) ? this.gameState.deadPlayers : [];
+        if (dead.length === 0) return false;
+        // Handle both arrays of IDs and arrays of player objects
+        if (typeof dead[0] === 'object') {
+            return dead.some(p => (p && (p.id || p.playerId)) === this.playerId);
+        }
+        return dead.includes(this.playerId);
     }
 
     startGameLoop() {
@@ -4820,11 +4847,42 @@ class VelmoraGame {
         bar.style.display = 'block';
     }
 
+    updateChatInputs() {
+        try {
+            const dead = this.isDead();
+            const chatInput = document.getElementById('chatInput');
+            const sendChatButton = document.getElementById('sendChatButton');
+            if (chatInput) {
+                chatInput.disabled = !!dead;
+                chatInput.placeholder = dead ? 'Eliminated — cannot chat' : 'Type a message...';
+            }
+            if (sendChatButton) sendChatButton.disabled = !!dead;
+            const mafiaInput = document.getElementById('mafiaInput');
+            const sendMafiaChatButton = document.getElementById('sendMafiaChatButton');
+            if (mafiaInput) {
+                mafiaInput.disabled = !!dead;
+                mafiaInput.placeholder = dead ? 'Eliminated — cannot chat' : 'Secret mafia message...';
+            }
+            if (sendMafiaChatButton) sendMafiaChatButton.disabled = !!dead;
+            const policeInput = document.getElementById('policeInput');
+            const sendPoliceChatButton = document.getElementById('sendPoliceChatButton');
+            if (policeInput) {
+                policeInput.disabled = !!dead;
+                policeInput.placeholder = dead ? 'Eliminated — cannot chat' : 'Police-only message...';
+            }
+            if (sendPoliceChatButton) sendPoliceChatButton.disabled = !!dead;
+        } catch {}
+    }
+
     sendPoliceChat() {
         const input = document.getElementById('policeInput');
         if (!input) return;
         const text = input.value.trim();
         if (!text || text.length > 200) return;
+        if (this.isDead()) {
+            this.showToast('👻 You are eliminated and cannot chat.', 'error');
+            return;
+        }
         if (this.currentRoomCode) {
             this.socket.emit('policeChatMessage', { roomCode: this.currentRoomCode, message: text, playerName: this.playerName });
             input.value = '';

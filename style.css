@@ -41,7 +41,7 @@ body.night-phase {
         "status status"
         "canvas chat";
     grid-template-rows: auto 1fr;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: 360px 1fr; /* Swapped widths: game canvas 360px, chat takes remaining space */
     width: 100%;
     height: 100vh;
     gap: 0;
@@ -4040,7 +4040,7 @@ body.voting-phase {
 			"status status"
 			"canvas chat";
 		grid-template-rows: auto 1fr;
-		grid-template-columns: 1fr 360px;
+		grid-template-columns: 360px 1fr; /* Swapped widths: game canvas 360px, chat takes remaining space */
 	}
 	/* Chat pane on side like desktop */
 	.chat-window {

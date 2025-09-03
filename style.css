@@ -4097,3 +4097,30 @@ body.voting-phase {
 	body.in-game .game-header #userInfo { display: none !important; }
 	body.in-game .game-header .hamburger-menu-inline { display: block !important; margin-left: auto; }
 }
+
+@media (max-width: 768px) {
+    /* Adjustments for smaller screens */
+    .chat-window {
+        grid-template-rows: auto 1fr; /* Header takes auto height, content takes remaining space */
+    }
+
+    .chat-window-header {
+        padding: 0.5rem 1rem; /* Reduced padding for a smaller header */
+    }
+
+    .chat-window-title {
+        font-size: 1rem; /* Slightly smaller font size for the title */
+    }
+
+    .chat-window-content {
+        display: grid;
+        grid-template-rows: 1fr 1fr 1fr; /* Example: 3 chat sections take equal space */
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .chat-section {
+        min-height: unset; /* Allow sections to size based on grid */
+        max-height: unset;
+    }
+}

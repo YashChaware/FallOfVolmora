@@ -1256,17 +1256,20 @@ function processNightActions(roomCode) {
                     const protectedPlayerId = Array.from(room.protectedPlayers)[0];
                     const protectedPlayer = room.players.get(protectedPlayerId);
                     
+                    const alignmentLabel = isMafiaAlignedRole(targetPlayer.role) ? 'a Mafia member' : 'a Civilian';
                     io.to(roomCode).emit('playerEliminated', {
                         playerId: room.mafiaKillTarget,
                         playerName: targetPlayer.name,
                         phase: 'night',
-                        message: `${targetPlayer.name} was eliminated by the Mafia. Someone was protected tonight.`
+                        message: `${targetPlayer.name}, ${alignmentLabel}, was eliminated by the Mafia. Someone was protected tonight.`
                     });
                 } else {
+                    const alignmentLabel = isMafiaAlignedRole(targetPlayer.role) ? 'a Mafia member' : 'a Civilian';
                     io.to(roomCode).emit('playerEliminated', {
                         playerId: room.mafiaKillTarget,
                         playerName: targetPlayer.name,
-                        phase: 'night'
+                        phase: 'night',
+                        message: `${targetPlayer.name}, ${alignmentLabel}, was eliminated by the Mafia.`
                     });
                 }
                 
@@ -1443,11 +1446,13 @@ function processVotes(roomCode) {
             // Normal elimination
             room.deadPlayers.add(eliminated);
             
+            const alignmentLabel = isMafiaAlignedRole(eliminatedPlayer.role) ? 'a Mafia member' : 'a Civilian';
             io.to(roomCode).emit('playerEliminated', {
                 playerId: eliminated,
                 playerName: eliminatedPlayer.name,
                 phase: 'day',
-                votes: maxVotes
+                votes: maxVotes,
+                message: `${eliminatedPlayer.name}, ${alignmentLabel}, was eliminated.`
             });
             
             io.to(roomCode).emit('votingResult', {
@@ -1513,13 +1518,15 @@ function completeSuicideBomberElimination(roomCode, suicideBomberId, selectedTar
     }
     
     // Send elimination notification
+    const alignmentLabel = isMafiaAlignedRole(suicideBomber.role) ? 'a Mafia member' : 'a Civilian';
     io.to(roomCode).emit('playerEliminated', {
         playerId: suicideBomberId,
         playerName: suicideBomber.name,
         phase: 'day',
         votes: originalVotes,
         suicideBomberTargets: eliminatedTargets,
-        protectedTargets: protectedTargets
+        protectedTargets: protectedTargets,
+        message: `${suicideBomber.name}, ${alignmentLabel}, was eliminated.`
     });
     
     // Send special message about the suicide bombing

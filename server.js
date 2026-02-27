@@ -586,9 +586,24 @@ const ROLE_DESCRIPTIONS = {
     [ROLES.SUICIDE_BOMBER]: '🔥 Mafia role: When discovered and about to be eliminated, choose specific players to kill in your final act of defiance! (Doctor protection applies)',
     [ROLES.MANIPULATOR]: '🧠 Mafia role: Alter votes, spread false information, and redirect suspicion during discussions.',
     [ROLES.WHITE_POLICE]: '🚔 Civilian-aligned Police: Investigate one player per round to reveal their alignment.',
-    [ROLES.BLACK_POLICE]: '⚫ Civilian-aligned Police: Eliminate suspects without full proof, but risk killing innocents.',
+    [ROLES.BLACK_POLICE]: '⚫ Mafia-aligned undercover Police: You appear as police but secretly work with the mafia side.',
     [ROLES.GRAY_POLICE]: '🔘 Neutral Police: Choose to secretly support either Mafia or Civilians during the game.'
 };
+
+// Alignment helpers: "mafiyas" (bad) vs "civilians" (good)
+function isMafiaAlignedRole(role) {
+    return role === ROLES.MAFIA ||
+        role === ROLES.SUICIDE_BOMBER ||
+        role === ROLES.MANIPULATOR ||
+        role === ROLES.BLACK_POLICE;
+}
+
+function isInnocentAlignedRole(role) {
+    return role === ROLES.DETECTIVE ||
+        role === ROLES.CIVILIAN ||
+        role === ROLES.DOCTOR ||
+        role === ROLES.WHITE_POLICE;
+}
 
 // Game configuration
 const MIN_PLAYERS = 4;
@@ -1029,14 +1044,9 @@ function checkWinCondition(roomCode) {
     const alivePlayers = Array.from(room.players.values())
         .filter(p => !room.deadPlayers.has(p.id));
     
-    // Count mafia vs innocent players (include all mafia types)
-    const aliveMafia = alivePlayers.filter(p => 
-        p.role === ROLES.MAFIA || p.role === ROLES.SUICIDE_BOMBER || p.role === ROLES.MANIPULATOR
-    );
-    const aliveInnocents = alivePlayers.filter(p => 
-        p.role === ROLES.DETECTIVE || p.role === ROLES.CIVILIAN || p.role === ROLES.DOCTOR ||
-        p.role === ROLES.WHITE_POLICE || p.role === ROLES.BLACK_POLICE
-    );
+    // Count mafia vs innocent players using alignment helpers
+    const aliveMafia = alivePlayers.filter(p => isMafiaAlignedRole(p.role));
+    const aliveInnocents = alivePlayers.filter(p => isInnocentAlignedRole(p.role));
     
     // Gray Police is neutral and doesn't count for either side in win conditions
     // (They can choose their allegiance during gameplay)
@@ -1086,9 +1096,9 @@ async function endGameWithTracking(roomCode, winCondition) {
             
             // Determine if player won
             if (winCondition.winner === 'mafia') {
-                won = (player.role === 'mafia' || player.role === 'suicide_bomber' || player.role === 'manipulator');
+                won = isMafiaAlignedRole(player.role);
             } else if (winCondition.winner === 'innocents') {
-                won = !(player.role === 'mafia' || player.role === 'suicide_bomber' || player.role === 'manipulator');
+                won = !isMafiaAlignedRole(player.role);
             }
             
             // Add to game participants

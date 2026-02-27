@@ -2204,7 +2204,9 @@ class VelmoraGame {
         // Show/hide mafia chat for mafia players
         const mafiaChatPanel = document.getElementById('mafiaChatPanel');
         if (mafiaChatPanel) {
-            if (this.playerRole === 'mafia') {
+            // All "bad" roles (mafiyas) share mafia chat: mafia, suicide_bomber, manipulator, black_police
+            const mafiaAlignedRoles = ['mafia', 'suicide_bomber', 'manipulator', 'black_police'];
+            if (mafiaAlignedRoles.includes(this.playerRole)) {
                 mafiaChatPanel.style.display = 'block';
             } else {
                 mafiaChatPanel.style.display = 'none';

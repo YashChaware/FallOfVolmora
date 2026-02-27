@@ -1301,6 +1301,7 @@ function startNightPhase(roomCode) {
     room.nightActionsUsed.clear(); // Reset night actions for new night
     room.protectedPlayers = new Set(); // Clear doctor protections from previous night
     room.mafiaKillTarget = null; // Clear mafia kill target for new night
+    room.manipulations = new Map(); // Clear manipulations each night
     
     // Determine if this is the first night or a regular night
     const isFirstNight = room.dayCount === 0;
@@ -2303,7 +2304,7 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Store the vote
+        // Store the vote as cast
         room.votes.set(socket.id, targetPlayerId);
         const targetPlayer = room.players.get(targetPlayerId);
         const voterPlayer = room.players.get(socket.id);
@@ -2313,7 +2314,29 @@ io.on('connection', (socket) => {
             targetName: targetPlayer.name
         });
         
-        // Broadcast detailed vote information to all players (dynamically visible)
+        // After storing the vote, check if manipulations should now apply
+        const alivePlayerIds = Array.from(room.players.keys()).filter(id => !room.deadPlayers.has(id));
+        const totalVotesNow = room.votes.size;
+        const manipulationThreshold = Math.max(2, Math.floor(alivePlayerIds.length * 0.3)); // "a few" votes
+
+        if (room.manipulations && totalVotesNow >= manipulationThreshold) {
+            if (!room.appliedManipulations) {
+                room.appliedManipulations = new Set();
+            }
+            for (const [manipulatedId, forcedTargetId] of room.manipulations.entries()) {
+                if (room.appliedManipulations.has(manipulatedId)) continue;
+                if (!room.votes.has(manipulatedId)) continue; // manipulated player hasn't voted yet
+                if (!forcedTargetId || room.deadPlayers.has(forcedTargetId)) continue;
+                // Redirect the stored vote
+                room.votes.set(manipulatedId, forcedTargetId);
+                room.appliedManipulations.add(manipulatedId);
+                const manipulatedPlayer = room.players.get(manipulatedId);
+                const forcedTargetPlayer = room.players.get(forcedTargetId);
+                console.log(`🧠 Manipulation applied in room ${roomCode}: ${manipulatedPlayer?.name} vote redirected to ${forcedTargetPlayer?.name}`);
+            }
+        }
+
+        // Recompute vote counts after any manipulations
         const voteCounts = new Map();
         const voteDetails = []; // Array of individual votes with voter and target names
         
@@ -2335,7 +2358,7 @@ io.on('connection', (socket) => {
         
         io.to(roomCode).emit('voteUpdate', {
             totalVotes: room.votes.size,
-            alivePlayers: Array.from(room.players.keys()).filter(id => !room.deadPlayers.has(id)).length,
+            alivePlayers: alivePlayerIds.length,
             voteCounts: Array.from(voteCounts.entries()).map(([playerId, votes]) => ({
                 playerName: room.players.get(playerId).name,
                 votes: votes
@@ -2418,7 +2441,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('nightAction', (data) => {
-        const { roomCode, action, target } = data;
+        const { roomCode, action, target, extraTarget } = data;
         const room = rooms.get(roomCode);
         
         if (!room || !room.players.has(socket.id)) {
@@ -2486,6 +2509,55 @@ io.on('connection', (socket) => {
             console.log(`${player.name} (${player.role}) chose to eliminate ${targetPlayer.name} in room ${roomCode}`);
             
             // Check if all night actions are complete
+            if (checkAllNightActionsComplete(roomCode)) {
+                endPhaseEarly(roomCode, 'All night actions completed');
+                return;
+            }
+        }
+        
+        // Manipulator can redirect a player's vote during the next day
+        if (player.role === ROLES.MANIPULATOR && action === 'manipulate') {
+            const manipulateActionKey = `manipulate_${socket.id}`;
+            if (room.nightActionsUsed.has(manipulateActionKey)) {
+                socket.emit('error', 'You have already manipulated a player this night');
+                return;
+            }
+            const manipulatedPlayer = room.players.get(target);
+            const forcedTarget = room.players.get(extraTarget);
+            
+            // Basic validation
+            if (!manipulatedPlayer || !forcedTarget) {
+                socket.emit('error', 'Invalid manipulation targets');
+                return;
+            }
+            if (room.deadPlayers.has(target) || room.deadPlayers.has(extraTarget)) {
+                socket.emit('error', 'You cannot manipulate or force votes on dead players');
+                return;
+            }
+            if (target === extraTarget) {
+                socket.emit('error', 'Manipulated player and forced vote target must be different');
+                return;
+            }
+            
+            // Initialize manipulations map if needed
+            if (!room.manipulations) {
+                room.manipulations = new Map();
+            }
+            
+            // Store manipulation: when voting, "target" will effectively vote for "extraTarget"
+            room.manipulations.set(target, extraTarget);
+            
+            socket.emit('actionConfirmed', {
+                action: 'manipulate',
+                targetName: manipulatedPlayer.name,
+                message: `You have manipulated ${manipulatedPlayer.name}. Their vote will be redirected to ${forcedTarget.name} next day.`
+            });
+            
+            console.log(`${player.name} (Manipulator) set ${manipulatedPlayer.name}'s vote to ${forcedTarget.name} in room ${roomCode}`);
+            
+            // Mark manipulator's action as used for this night
+            room.nightActionsUsed.add(manipulateActionKey);
+            
             if (checkAllNightActionsComplete(roomCode)) {
                 endPhaseEarly(roomCode, 'All night actions completed');
                 return;

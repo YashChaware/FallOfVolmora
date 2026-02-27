@@ -1913,6 +1913,18 @@ class VelmoraGame {
                 actionsContainer.appendChild(protectBtn);
                 hasActions = true;
             }
+            
+            // Manipulator: choose who to control and who they will vote for
+            if (this.playerRole === 'manipulator' && targetPlayer.id !== this.playerId) {
+                const manipulateBtn = document.createElement('button');
+                manipulateBtn.className = 'action-option-btn manipulate-btn';
+                manipulateBtn.textContent = `🧠 Manipulate ${targetPlayer.name}`;
+                manipulateBtn.onclick = () => {
+                    this.openManipulateModal(targetPlayer.id);
+                };
+                actionsContainer.appendChild(manipulateBtn);
+                hasActions = true;
+            }
         }
         
         if (!hasActions) {
@@ -1982,6 +1994,104 @@ class VelmoraGame {
         
         // Update table to show action was taken
         this.updatePlayerTable();
+    }
+
+    // Manipulator: open a small modal to choose who the manipulated player will vote for
+    openManipulateModal(manipulatedPlayerId) {
+        const existing = document.getElementById('manipulateModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'manipulateModal';
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        modal.style.zIndex = '1100';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+
+        const content = document.createElement('div');
+        content.style.backgroundColor = '#111827';
+        content.style.padding = '24px';
+        content.style.borderRadius = '16px';
+        content.style.minWidth = '280px';
+        content.style.maxWidth = '360px';
+        content.style.boxShadow = '0 15px 40px rgba(0,0,0,0.6)';
+
+        const title = document.createElement('h3');
+        title.textContent = '🧠 Choose Forced Vote Target';
+        title.style.marginBottom = '12px';
+        content.appendChild(title);
+
+        const description = document.createElement('p');
+        description.textContent = 'Select who the manipulated player will be forced to vote for during the next day.';
+        description.style.fontSize = '0.9rem';
+        description.style.color = '#cbd5f5';
+        description.style.marginBottom = '12px';
+        content.appendChild(description);
+
+        const select = document.createElement('select');
+        select.style.width = '100%';
+        select.style.marginBottom = '12px';
+
+        // Populate with all alive players except the manipulator and the manipulated player
+        const alivePlayers = this.getAllPlayers().filter(p => p.alive && p.id !== this.playerId && p.id !== manipulatedPlayerId);
+        alivePlayers.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            select.appendChild(opt);
+        });
+
+        if (alivePlayers.length === 0) {
+            description.textContent = 'No valid targets to force a vote on.';
+        }
+
+        content.appendChild(select);
+
+        const buttonsRow = document.createElement('div');
+        buttonsRow.style.display = 'flex';
+        buttonsRow.style.justifyContent = 'flex-end';
+        buttonsRow.style.gap = '8px';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.className = 'cancel-btn';
+        cancelBtn.onclick = () => modal.remove();
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.textContent = 'Confirm';
+        confirmBtn.className = 'primary-btn';
+        confirmBtn.onclick = () => {
+            if (!select.value) {
+                this.showToast('No target selected for manipulation.', 'error');
+                return;
+            }
+            // Send manipulate action with both targets
+            this.socket.emit('nightAction', {
+                roomCode: this.currentRoomCode,
+                action: 'manipulate',
+                target: manipulatedPlayerId,
+                extraTarget: select.value
+            });
+            modal.remove();
+        };
+
+        if (alivePlayers.length === 0) {
+            confirmBtn.disabled = true;
+        }
+
+        buttonsRow.appendChild(cancelBtn);
+        buttonsRow.appendChild(confirmBtn);
+        content.appendChild(buttonsRow);
+
+        modal.appendChild(content);
+        document.body.appendChild(modal);
     }
 
     showInvestigationResultModal(targetName, result) {
